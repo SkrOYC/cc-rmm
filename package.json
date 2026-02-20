@@ -1,0 +1,17 @@
+{
+  "name": "cc-rmm",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@biomejs/biome": "2.4.0",
+    "@types/bun": "latest",
+    "ultracite": "7.2.3"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "scripts": {
+    "check": "ultracite check",
+    "fix": "ultracite fix"
+  }
+}
