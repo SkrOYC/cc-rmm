@@ -6,7 +6,7 @@
 
 Per **Martin Fowler's** architectural guidance, this plugin uses an **Event-Driven Architecture** within a single deployable unit (the Claude Code plugin). This fits because:
 
-1. **Natural Event Flow**: Claude Code hooks provide lifecycle events (`SessionStart`, `Stop`, `PreCompact`) that naturally map to memory operations
+1. **Natural Event Flow**: Claude Code hooks provide lifecycle events (`UserPromptSubmit`, `SessionEnd`, `PreCompact`) that naturally map to memory operations
 2. **Solo Dev Constraints**: Single plugin directory, no distributed systems, minimal operational burden
 3. **Separation of Concerns**: Distinct modules for extraction, retrieval, storage, and reranking
 
@@ -24,7 +24,7 @@ Per **Martin Fowler's** architectural guidance, this plugin uses an **Event-Driv
 
 | Container                | Type            | Responsibility                                                           |
 | ------------------------ | --------------- | ------------------------------------------------------------------------ |
-| **Hook Handlers**        | Event Listeners | Respond to Claude Code lifecycle events (SessionStart, Stop, PreCompact) |
+| **Hook Handlers**        | Event Listeners | Respond to Claude Code lifecycle events (UserPromptSubmit, SessionEnd, PreCompact) |
 | **Memory Engine**        | Core Service    | Orchestrates extraction, retrieval, merge operations                     |
 | **Prospective Module**   | Processor       | Extracts memories from conversation transcript using LLM                 |
 | **Retrospective Module** | Processor       | Retrieves and reranks memories for context injection                     |
@@ -44,7 +44,7 @@ C4Container
   Person(user, "User", "Claude Code user")
 
   System_Boundary(claude_code, "Claude Code") {
-    Container(hooks, "Hooks System", "Event-driven lifecycle", "Triggers SessionStart, Stop, PreCompact")
+    Container(hooks, "Hooks System", "Event-driven lifecycle", "Triggers UserPromptSubmit, SessionEnd, PreCompact")
     Container(cli, "Claude CLI", "AI assistant", "Invokes hooks at lifecycle points")
   }
 
@@ -80,7 +80,7 @@ C4Container
 
 ## 4. Critical Execution Flows
 
-### Flow 1: Session Start (Memory Loading)
+### Flow 1: User Prompt Submit (Memory Loading)
 
 ```mermaid
 sequenceDiagram
@@ -94,8 +94,8 @@ sequenceDiagram
     participant Reranker as Reranker
     participant Injector as Context Injector
 
-    User->>Claude: Starts session
-    Claude->>Hooks: SessionStart event
+    User->>Claude: Submits prompt
+    Claude->>Hooks: UserPromptSubmit event
     Hooks->>Handler: Execute hook script
     Handler->>Engine: Load memories
 
@@ -122,7 +122,9 @@ sequenceDiagram
     Claude-->>User: Context enriched with memories
 ```
 
-### Flow 2: Session End (Memory Extraction)
+**Note:** This flow runs on every user prompt, ensuring memories are always fresh.
+
+### Flow 2: SessionEnd (Memory Extraction)
 
 ```mermaid
 sequenceDiagram
@@ -135,7 +137,7 @@ sequenceDiagram
     participant SQLite as SQLite
 
     User->>Claude: Ends conversation
-    Claude->>Hooks: Stop event
+    Claude->>Hooks: SessionEnd event
     Hooks->>Handler: Execute hook
 
     par Get Transcript
@@ -164,7 +166,7 @@ sequenceDiagram
     Handler-->>Hooks: Exit 0
 ```
 
-### Flow 3: Pre-Compact (Context Re-injection)
+### Flow 3: Pre-Compact (Extract + Re-inject)
 
 ```mermaid
 sequenceDiagram
@@ -172,22 +174,42 @@ sequenceDiagram
     participant Hooks as Hook System
     participant Handler as Hook Handler
     participant Engine as Memory Engine
+    participant LLM as LLM (Agent Hook)
     participant Reranker as Reranker
     participant SQLite as SQLite
 
     Note over Claude: Context needs compaction
     Claude->>Hooks: PreCompact event
-    Hooks->>Handler: Execute hook
+    Hooks->>Handler: Execute hook (with transcript_path)
 
-    Handler->>Engine: Re-inject memories
+    rect rgb(240, 248, 255)
+        Note over Handler,LLM: Prospective Reflection (Extract)
+        Handler->>Engine: Extract new memories
 
-    Engine->>SQLite: Get all project memories
-    Engine->>Reranker: Re-rank for current context
+        Engine->>SQLite: Get existing turn references
+        SQLite-->>Engine: Referenced turn IDs
 
-    Engine->>Handler: Top-M relevant memories
+        Engine->>LLM: Extract from unconsidered turns
+        LLM-->>Engine: New memories
+
+        Engine->>SQLite: Store new memories (with turn refs)
+    end
+
+    rect rgb(255, 248, 240)
+        Note over Handler,SQLite: Retrospective Reflection (Re-inject)
+        Handler->>Engine: Re-inject memories
+
+        Engine->>SQLite: Get all project memories
+        Engine->>Reranker: Re-rank for current context
+
+        Engine->>Handler: Top-M relevant memories
+    end
+
     Handler-->>Hooks: additionalContext
     Hooks-->>Claude: Re-inject after compaction
 ```
+
+**Key difference from Flow 2 (SessionEnd):** PreCompact performs full re-extraction, letting deduplication (turn reference tracking) handle overlaps with memories already extracted at SessionEnd.
 
 ---
 
@@ -250,22 +272,24 @@ sequenceDiagram
 │                    Claude Code Lifecycle                 │
 ├──────────────────────────────────────────────────────────┤
 │                                                          │
-│  SessionStart ──► Load Memories ──► Inject Context       │
+│  UserPromptSubmit ──► Load Memories ──► Inject Context   │
 │       │                                                  │
 │       ▼                                                  │
 │  [User works with Claude]                                │
 │       │                                                  │
 │       ▼                                                  │
-│  PreCompact ──► Re-rank Memories ──► Re-inject           │
+│  PreCompact ──► Extract (new) ──► Deduplicate ──► Re-inject │
 │       │                                                  │
 │       ▼                                                  │
 │  [More user work]                                        │
 │       │                                                  │
 │       ▼                                                  │
-│  Stop ──► Extract Memories ──► Merge/Add ──► Persist     │
+│  SessionEnd ──► Extract Memories ──► Deduplicate ──► Persist   │
 │                                                          │
 └──────────────────────────────────────────────────────────┘
 ```
+
+**Note:** Both PreCompact and SessionEnd trigger Prospective Reflection. Turn reference tracking ensures PreCompact only extracts unconsidered turns, preventing duplicates.
 
 ---
 
@@ -287,9 +311,9 @@ sequenceDiagram
 
 | Event          | Hook Type | Action                   |
 | -------------- | --------- | ------------------------ |
-| `SessionStart` | command   | Load + inject memories   |
-| `Stop`         | agent     | Extract memories via LLM |
-| `PreCompact`   | command   | Re-inject memories       |
+| `UserPromptSubmit` | command   | Load + inject memories before each prompt   |
+| `SessionEnd`         | agent     | Extract memories via LLM |
+| `PreCompact`   | agent     | Extract + re-inject memories |
 
 > **Note**: Physical schema defined in TechSpec.md
 

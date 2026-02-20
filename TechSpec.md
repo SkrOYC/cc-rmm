@@ -156,7 +156,7 @@ CREATE INDEX idx_citations_session ON citations(session_id);
 
 ## 4. Hook Contract (CLI Interface)
 
-### SessionStart Hook
+### UserPromptSubmit Hook (Memory Loading)
 
 **Input (stdin):**
 
@@ -164,9 +164,8 @@ CREATE INDEX idx_citations_session ON citations(session_id);
 {
 	"session_id": "abc123",
 	"cwd": "/home/user/my-project",
-	"hook_event_name": "SessionStart",
-	"last_assistant_message": "",
-	"prompt": ""
+	"hook_event_name": "UserPromptSubmit",
+	"prompt": "Can you refactor the auth module?"
 }
 ```
 
@@ -175,13 +174,15 @@ CREATE INDEX idx_citations_session ON citations(session_id);
 ```json
 {
 	"hookSpecificOutput": {
-		"hookEventName": "SessionStart",
+		"hookEventName": "UserPromptSubmit",
 		"additionalContext": "<memories>\n- Memory [0]: User prefers TypeScript strict mode\n  Original: \"I always use TypeScript with strict: true\"\n</memories>"
 	}
 }
 ```
 
-### Stop Hook (Memory Extraction)
+> **Note:** This hook fires on every user prompt, ensuring fresh memories are injected before each interaction.
+
+### SessionEnd Hook (Memory Extraction)
 
 **Input (stdin):**
 
@@ -189,7 +190,7 @@ CREATE INDEX idx_citations_session ON citations(session_id);
 {
 	"session_id": "abc123",
 	"cwd": "/home/user/my-project",
-	"hook_event_name": "Stop",
+	"hook_event_name": "SessionEnd",
 	"transcript_path": "/home/user/.claude/projects/abc123.jsonl",
 	"last_assistant_message": "I've completed the refactoring"
 }
@@ -244,11 +245,21 @@ PROMPT
 	"session_id": "abc123",
 	"cwd": "/home/user/my-project",
 	"hook_event_name": "PreCompact",
+	"transcript_path": "/home/user/.claude/projects/abc123.jsonl",
 	"last_assistant_message": "..."
 }
 ```
 
-**Output:** Same format as SessionStart, re-injects memories after compaction.
+**Actions:**
+
+1. **Full re-extraction** (Prospective Reflection): Read full transcript, call Claude CLI to extract memories from all turns
+2. **Deduplicate**: Skip turns already referenced in existing memories (via turn reference tracking)
+3. **Store new memories**: Persist to SQLite with turn references
+4. **Re-inject**: Return memories via additionalContext for post-compaction recovery
+
+> **Constitutional Note:** PreCompact performs full re-extraction per constitution. Deduplication via turn reference tracking prevents duplicates with memories already extracted at SessionEnd.
+
+**Output:** Same format as UserPromptSubmit, injects memories after compaction.
 
 ---
 
@@ -300,10 +311,21 @@ cc-rmm/
 | Source File                       | Changes Needed                                          |
 | --------------------------------- | ------------------------------------------------------- |
 | `algorithms/reranking.ts`         | Change dimension from 1536 to 768                       |
-| `algorithms/memory-extraction.ts` | Remove LangChain types, adapt for transcript file input |
+| `algorithms/memory-extraction.ts` | Remove LangChain types, adapt for transcript file input, add turn reference filtering |
 | `algorithms/memory-update.ts`     | Remove LangChain dependencies                           |
 | `utils/matrix.ts`                 | Already dimension-agnostic, no changes                  |
 | `schemas/index.ts`                | Create 768-dim versions of schemas                      |
+
+### Turn Reference Tracking (Deduplication)
+
+To avoid extracting duplicate memories, the system tracks which conversation turns have already been considered:
+
+1. **Each memory stores turn references**: The `turn_references` field contains an array of turn IDs that contributed to the memory
+2. **Before extraction**: Query existing memories to get all referenced turn IDs
+3. **Extraction prompt includes**: "Only extract memories from turns not already referenced: [turn_id_1, turn_id_2, ...]"
+4. **New turns only**: The LLM focuses on unconsidered turns during extraction
+
+This ensures PreCompact extraction adds new memories without duplicating content already extracted at SessionEnd.
 
 ### Module Boundaries
 

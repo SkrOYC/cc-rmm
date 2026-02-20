@@ -25,6 +25,7 @@ This breaks the "personalized assistant" promise for users working on long-term 
 | **Recall technical decisions** | "What was the reasoning behind that API design we discussed?"                                             | P0       |
 | **Maintain preferences**       | "I've told Claude multiple times I prefer TypeScript strict mode—why does it keep suggesting JavaScript?" | P1       |
 | **Cross-session continuity**   | "I was working on this feature yesterday—where did I leave off?"                                          | P1       |
+| **No memory loss during compaction** | "I had a long conversation but got compacted - will I lose those memories?" | P0       |
 
 ---
 
@@ -39,6 +40,7 @@ This breaks the "personalized assistant" promise for users working on long-term 
 | **Retrospective Reflection** | Process of retrieving relevant memories for current context, with adaptive reranking | "retrieval", "recall", "context injection"   |
 | **Reranker**                 | Lightweight model (two matrices) that adapts memory retrieval to user patterns       | "retriever", "ranker"                        |
 | **Citation**                 | Signal indicating whether a memory was useful in generating a response               | "attribution", "feedback"                    |
+| **Turn Reference**          | Array of turn IDs from conversation that contributed to a memory                    | "turn IDs", "message references"            |
 | **Project Context**          | The working directory / git repository being operated on                             | "workspace", "folder"                        |
 
 ---
@@ -75,14 +77,17 @@ This breaks the "personalized assistant" promise for users working on long-term 
 | Capability                     | Description                                             | Acceptance Criteria                                                             |
 | ------------------------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | **Session Boundary Detection** | Detect when a conversation session starts and ends      | Hooks trigger extraction at correct lifecycle points                            |
-| **Memory Extraction**          | After each session, extract key facts using LLM prompts | Extracts memories as JSON with summary + turn references per paper Appendix D.1 |
+| **Memory Extraction (SessionEnd)** | After session ends, extract key facts using LLM prompts | Extracts memories as JSON with summary + turn references per paper Appendix D.1 |
+| **Memory Extraction (PreCompact)** | Before context compaction, extract any new memories | Runs full re-extraction, deduplicates against existing turn references         |
+| **Turn Reference Tracking**   | Track which conversation turns have been considered     | Each memory stores turn IDs; new extraction skips already-referenced turns     |
 | **Memory Storage**             | Persist memories to local database                      | Memories survive Claude Code restart                                            |
-| **Memory Loading**             | On session start, load relevant memories into context   | User sees prior context within N seconds of start                               |
+| **Memory Loading**             | Before each user prompt, load relevant memories into context   | Memories are injected via UserPromptSubmit hook for fresh context on every prompt                              |
 
 ### Epic 2: Context Injection (P0)
 
 | Capability                | Description                                            | Acceptance Criteria                             |
 | ------------------------- | ------------------------------------------------------ | ----------------------------------------------- |
+| **Pre-Compact Extraction** | Before context compaction, extract new memories       | Prevents memory loss during compaction          |
 | **Pre-Compact Injection** | Before context compaction, inject memory context       | Memory survives long conversations              |
 | **Semantic Retrieval**    | Retrieve memories semantically similar to current task | Uses embedding similarity search                |
 | **Format Injection**      | Format memories per paper's Appendix D.2               | Memories appear as `<memories>` block in prompt |
@@ -171,7 +176,7 @@ C4Context
   System(embeddings, "Embedding Model", "Local embeddings")
 
   Rel(user, cli, "Invokes", "CLI commands")
-  Rel(cli, hooks, "Triggers", "SessionStart, SessionEnd, PreCompact")
+  Rel(cli, hooks, "Triggers", "UserPromptSubmit, SessionEnd, PreCompact")
   Rel(hooks, hooks_handler, "Executes", "Shell scripts")
   Rel(hooks_handler, memory_engine, "Calls", "Memory operations")
   Rel(memory_engine, storage, "Reads/Writes", "Memories")

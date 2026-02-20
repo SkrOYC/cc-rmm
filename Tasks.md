@@ -4,15 +4,15 @@
 
 | Metric                     | Value      |
 | -------------------------- | ---------- |
-| **Total Story Points**     | 34         |
-| **Critical Path Length**   | 15 tickets |
+| **Total Story Points**     | 40         |
+| **Critical Path Length**   | 16 tickets |
 | **MVP Estimated Duration** | 3-4 weeks  |
 
 ### Critical Path Sequence
 
 ```
 T-001 → T-002 → T-003 → T-004 → T-005 → T-006 → T-007 → T-008
-   → T-009 → T-010 → T-011 → T-012 → T-013 → T-014 → T-015
+   → T-009 → T-010 → T-011 → T-012 → T-013 → T-014 → T-015 → T-016
 ```
 
 ---
@@ -55,22 +55,23 @@ flowchart LR
         T008[T-008 Memory Types]
         T009[T-009 Reranking]
         T010[T-010 Extraction]
-        T011[T-011 Memory Update]
+        T011[T-011 Adapt Memory Extraction]
+        T012[T-012 Turn Ref Tracking]
     end
 
     subgraph INTEGRATE[Epic 5: Integration]
-        T012[T-012 Claude CLI]
-        T013[T-013 Hook Handlers]
+        T013[T-013 Claude CLI]
+        T014[T-014 Hook Handlers]
     end
 
     subgraph LEARN[Epic 6: Learning]
-        T014[T-014 Citations]
-        T015[T-015 Weight Updates]
+        T015[T-015 Citation Extraction]
+        T016[T-016 REINFORCE Weight Updates]
     end
 
     T001 --> T002 --> T003 --> T004 --> T005 --> T006 --> T007
-    T007 --> T008 --> T009 --> T010 --> T011 --> T012 --> T013
-    T013 --> T014 --> T015
+    T007 --> T008 --> T009 --> T010 --> T011 --> T012 --> T013 --> T014
+    T014 --> T015 --> T016
 ```
 
 ---
@@ -96,24 +97,34 @@ flowchart LR
 > And executable scripts are produced
 > And linting passes
 > ```
+>
+> - **Tests:**
+>   - `package.json`: valid JSON, all dependencies resolve
+>   - `biome.jsonc`: passes ultracite doctor
+>   - Build produces executable scripts
 
 > **[T-002] Configure Claude Code Hooks**
 >
 > - **Type:** Feature
 > - **Effort:** 2
 > - **Dependencies:** T-001
-> - **Description:** Create hooks.json with SessionStart, Stop, and PreCompact hooks configured.
+> - **Description:** Create hooks.json with UserPromptSubmit, SessionEnd, and PreCompact hooks configured.
 > - **Acceptance Criteria:**
 >
 > ```gherkin
 > Given hooks.json configuration
 > When I start a Claude Code session
-> Then SessionStart hook executes the configured command
+> Then UserPromptSubmit hook executes the configured command
 > When I end a Claude Code session
-> Then Stop hook executes the configured command
+> Then SessionEnd hook executes the configured command
 > When context compaction occurs
 > Then PreCompact hook executes the configured command
 > ```
+>
+> - **Tests:**
+>   - `hooks/hooks.json`: valid JSON, all hook types present
+>   - Hook commands point to correct executables
+>   - PreCompact hook includes `transcript_path` (constitutional requirement)
 
 > **[T-003] Create Plugin Manifest**
 >
@@ -128,6 +139,9 @@ flowchart LR
 > When Claude Code loads the plugin
 > Then plugin.json is valid and recognized
 > ```
+>
+> - **Tests:**
+>   - `.claude-plugin/plugin.json`: valid JSON, correct schema
 
 > **[T-004] Implement Storage Interface**
 >
@@ -143,6 +157,10 @@ flowchart LR
 > Then all methods are typed correctly
 > And the interface matches the TechSpec contracts
 > ```
+>
+> - **Tests:**
+>   - `src/storage/__tests__/interfaces.test.ts`
+>   - Interface contract tests (mock implementation)
 
 ---
 
@@ -165,6 +183,13 @@ flowchart LR
 > When I query memories by project
 > Then results are returned correctly
 > ```
+>
+> - **Tests:**
+>   - `src/storage/__tests__/sqlite.test.ts`
+>   - `initDatabase`: creates all tables per TechSpec schema
+>   - `saveMemory` / `getMemories`: round-trip persistence
+>   - `saveWeights` / `getWeights`: W_q, W_m matrix persistence (768×768)
+>   - `saveCitation` / `getCitations`: citation record persistence
 
 ---
 
@@ -184,6 +209,12 @@ flowchart LR
 > Then I receive a 768-dimensional number array
 > And the embedding is normalized
 > ```
+>
+> - **Tests:**
+>   - `src/embeddings/__tests__/nomic.test.ts`
+>   - `embedQuery`: returns 768-dim vector (constitutional requirement)
+>   - `embedDocument`: returns 768-dim vector
+>   - Output is normalized (L2 norm = 1)
 
 > **[T-007] Implement Similarity Search**
 >
@@ -199,6 +230,12 @@ flowchart LR
 > Then memories are ranked by cosine similarity
 > And top-K results are returned
 > ```
+>
+> - **Tests:**
+>   - `src/embeddings/__tests__/similarity.test.ts`
+>   - `cosineSimilarity`: correct computation
+>   - `searchSimilar`: returns top-K by similarity
+>   - `searchSimilar`: handles empty database
 
 ---
 
@@ -218,6 +255,12 @@ flowchart LR
 > Then result is computed correctly
 > And residualAdd produces expected output
 > ```
+>
+> - **Tests:**
+>   - `src/core/algorithms/__tests__/matrix.test.ts`
+>   - `matmulVector`: 768×768 matrix × 768-vector = 768-vector (verify against numpy)
+>   - `residualAdd`: (I + λW)·v computation verification
+>   - `transpose`, `add`, `scale` operations on 768×768 matrices
 
 > **[T-009] Define 768-Dim Memory Types**
 >
@@ -233,6 +276,12 @@ flowchart LR
 > Then embedding must be exactly 768 numbers
 > And RerankerState requires 768x768 matrices
 > ```
+>
+> - **Tests:**
+>   - `src/core/types/__tests__/memory.test.ts`
+>   - Type guard tests: `isMemoryEntry()`, `isRerankerState()`
+>   - Validation: 768-dim embedding constraint enforcement
+>   - Serialization round-trip: JSON → MemoryEntry → JSON
 
 > **[T-010] Adapt Reranking Algorithm**
 >
@@ -249,6 +298,12 @@ flowchart LR
 > When I run gumbelSoftmaxSample
 > Then Top-M memories are selected with probabilities
 > ```
+>
+> - **Tests:**
+>   - `src/core/algorithms/__tests__/reranking.test.ts`
+>   - `adaptEmbedding`: q' = q + W_q·q produces 768-dim (verify dimension)
+>   - `gumbelSoftmaxSample`: Top-M selection with probability distribution
+>   - `computeScore`: q'·m' scoring (constitutional requirement)
 
 > **[T-011] Adapt Memory Extraction**
 >
@@ -264,17 +319,47 @@ flowchart LR
 > Then it parses the transcript format
 > And returns MemoryEntry[] with embeddings
 > ```
+>
+> - **Tests:**
+>   - `src/core/algorithms/__tests__/extraction.test.ts`
+>   - Parse valid JSONL transcript with turn boundaries
+>   - Extract memories from transcript (mock LLM response)
+>   - MemoryEntry includes: summary, turnReferences, embedding
+
+> **[T-012] Implement Turn Reference Tracking**
+>
+> - **Type:** Feature
+> - **Effort:** 2
+> - **Dependencies:** T-011
+> - **Description:** Implement deduplication by tracking which conversation turns have been considered. Query existing memories for turn references before extraction.
+> - **Acceptance Criteria:**
+>
+> ```gherkin
+> Given existing memories with turn references
+> When I call getReferencedTurnIds
+> Then it returns all turn IDs from existing memories
+> Given referenced turn IDs
+> When I call extractMemories with excluded turns
+> Then extraction prompt includes "skip turns: [turn_ids]"
+> And new memories only reference unconsidered turns
+> ```
+>
+> - **Tests:**
+>   - `src/core/algorithms/__tests__/turn-tracking.test.ts`
+>   - `getReferencedTurnIds`: aggregates all turn IDs from project memories
+>   - `filterExtractedMemories`: removes memories referencing already-seen turns
+>   - `buildExcludedTurnsPrompt`: generates correct prompt exclusion text
 
 ---
 
 ## Epic 5: Integration
 
-> **[T-012] Implement Claude CLI Adapter**
+> **[T-013] Implement Claude CLI Adapter**
 >
 > - **Type:** Spike
 > - **Effort:** 3
-> - **Dependencies:** T-011
-> - **Description:** Implement wrapper for `claude -p --output-format json` with schema validation.
+> - **Dependencies:** T-012
+> - **Description:** Implement wrapper for `claude -p --output-format json` with schema validation. Must support excluded turn IDs for deduplication.
 > - **Acceptance Criteria:**
 >
 > ```gherkin
@@ -283,37 +368,52 @@ flowchart LR
 > Then Claude CLI is invoked with extraction prompt
 > And JSON output is parsed correctly
 > And extracted memories are returned
+> Given excluded turn IDs
+> When I call claudeExtractMemories
+> Then extraction prompt includes turn exclusion
+> And new memories reference only unconsidered turns
 > ```
+>
+> - **Tests:**
+>   - `src/adapters/__tests__/claude-cli.test.ts`
+>   - `extractMemories`: parses valid JSON response
+>   - `extractMemories`: handles malformed JSON gracefully
+>   - `buildPrompt`: includes excluded turn IDs in prompt (constitutional requirement)
 
-> **[T-013] Implement Hook Handlers**
+> **[T-014] Implement Hook Handlers**
 >
 > - **Type:** Feature
-> - **Effort:** 2
-> - **Dependencies:** T-012
-> - **Description:** Connect hooks to the memory pipeline: SessionStart loads, Stop extracts, PreCompact re-injects.
+> - **Effort:** 3
+> - **Dependencies:** T-013
+> - **Description:** Connect hooks to the memory pipeline: UserPromptSubmit loads, SessionEnd extracts, PreCompact extracts + re-injects.
 > - **Acceptance Criteria:**
 >
 > ```gherkin
-> Given a SessionStart event
+> Given a UserPromptSubmit event
 > When hook executes
 > Then memories are loaded and injected via additionalContext
-> Given a Stop event
+> Given a SessionEnd event
 > When hook executes
 > Then memories are extracted and stored
 > Given a PreCompact event
 > When hook executes
 > Then memories are re-injected into context
 > ```
+>
+> - **Tests:**
+>   - `hooks/__tests__/user-prompt-submit.test.ts`: loads memories, formats additionalContext before each prompt
+>   - `hooks/__tests__/stop.test.ts`: extracts and stores memories
+>   - `hooks/__tests__/pre-compact.test.ts`: extracts new + re-injects (dual-phase constitutional requirement)
 
 ---
 
 ## Epic 6: Learning
 
-> **[T-014] Implement Citation Extraction**
+> **[T-015] Implement Citation Extraction**
 >
 > - **Type:** Feature
 > - **Effort:** 2
-> - **Dependencies:** T-013
+> - **Dependencies:** T-014
 > - **Description:** Parse LLM responses for [i,j,k] citation format per paper.
 > - **Acceptance Criteria:**
 >
@@ -323,12 +423,18 @@ flowchart LR
 > Then citations are extracted and stored
 > And useful flag is set based on citation presence
 > ```
+>
+> - **Tests:**
+>   - `src/core/algorithms/__tests__/citations.test.ts`
+>   - `parseCitations`: extracts [i,j,k] from response text
+>   - `parseCitations`: handles no citations (useful: false)
+>   - `parseCitations`: handles multiple citations per response
 
-> **[T-015] Implement REINFORCE Weight Updates**
+> **[T-016] Implement REINFORCE Weight Updates**
 >
 > - **Type:** Feature
 > - **Effort:** 3
-> - **Dependencies:** T-014
+> - **Dependencies:** T-015
 > - **Description:** Implement gradient computation and weight updates using citations as rewards.
 > - **Acceptance Criteria:**
 >
@@ -338,16 +444,22 @@ flowchart LR
 > Then W_q and W_m matrices are updated
 > And weights are persisted to database
 > ```
+>
+> - **Tests:**
+>   - `src/core/algorithms/__tests__/reinforce.test.ts`
+>   - `computeGradient`: gradient computation from rewards (Equation 4)
+>   - `updateWeights`: W_q, W_m matrix updates with learning rate
+>   - `persistWeights`: round-trip to database
 
 ---
 
 ## Epic 7: Polish
 
-> **[T-016] Error Handling & Logging**
+> **[T-017] Error Handling & Logging**
 >
 > - **Type:** Chore
 > - **Effort:** 2
-> - **Dependencies:** T-015
+> - **Dependencies:** T-016
 > - **Description:** Add comprehensive error handling and structured logging.
 > - **Acceptance Criteria:**
 >
@@ -357,12 +469,17 @@ flowchart LR
 > Then it's logged with context
 > And hook exits cleanly (not blocking Claude)
 > ```
+>
+> - **Tests:**
+>   - `src/__tests__/errors.test.ts`
+>   - All errors include session_id context
+>   - Hook exits with correct codes: 0=success, 1=error, 2=block
 
-> **[T-017] CLI Commands**
+> **[T-018] CLI Commands**
 >
 > - **Type:** Feature
 > - **Effort:** 2
-> - **Dependencies:** T-016
+> - **Dependencies:** T-017
 > - **Description:** Implement /memory list, /memory clear, /memory search commands.
 > - **Acceptance Criteria:**
 >
@@ -376,11 +493,11 @@ flowchart LR
 > Then relevant memories are returned
 > ```
 
-> **[T-018] Documentation**
+> **[T-019] Documentation**
 >
 > - **Type:** Chore
 > - **Effort:** 1
-> - **Dependencies:** T-017
+> - **Dependencies:** T-018
 > - **Description:** Write README.md with installation and usage instructions.
 > - **Acceptance Criteria:**
 >
