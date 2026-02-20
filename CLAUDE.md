@@ -1,106 +1,50 @@
+# CLAUDE.md
 
-Default to using Bun instead of Node.js.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Use `bunx <package> <command>` instead of `npx <package> <command>`
-- Bun automatically loads .env, so don't use dotenv.
+## Project Overview
 
-## APIs
+This is a **Claude Code plugin** implementing **Reflective Memory Management (RMM)** for long-term conversational memory. It allows Claude Code to remember context across sessions.
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
+Based on the paper: *"In Prospect and Retrospect: Reflective Memory Management for Long-term Personalized Dialogue Agents"* (ACL 2025, arXiv:2503.08026v2)
 
-## Testing
+## Key Commands
 
-Use `bun test` to run tests.
+```bash
+# Install dependencies
+bun install
 
-```ts#index.test.ts
-import { test, expect } from "bun:test";
+# Lint and format (Ultracite)
+bun x ultracite fix
+bun x ultracite check
 
-test("hello world", () => {
-  expect(1).toBe(1);
-});
+# Run the plugin (during development)
+bun run index.ts
 ```
 
-## Frontend
+## Architecture
 
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
+This plugin uses **event-driven architecture** with Claude Code hooks:
 
-Server:
+- **UserPromptSubmit**: Load memories into context before each user prompt
+- **SessionEnd**: Extract memories from conversation when session ends
+- **PreCompact**: Re-inject memories before context compaction
 
-```ts#index.ts
-import index from "./index.html"
+The system has two main components:
+1. **Prospective Reflection**: Extracts memories from conversations using LLM
+2. **Retrospective Reflection**: Retrieves and reranks memories for context injection
 
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
-```
+## Technical Stack
 
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
+- **Runtime**: Bun
+- **Database**: SQLite (local, per-project isolation)
+- **Embeddings**: nomic-embed-text-v1 (768 dimensions)
+- **Reranker**: W_q, W_m matrices (768×768, ~2.4MB per project)
 
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
-```
+## Implementation Status
 
-With the following `frontend.tsx`:
+See Tasks.md for the implementation plan (18 tickets). The project is in Phase 1: Infrastructure Foundation.
 
-```tsx#frontend.tsx
-import React from "react";
-import { createRoot } from "react-dom/client";
+## Code Standards
 
-// import .css files directly and it works
-import './index.css';
-
-const root = createRoot(document.body);
-
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
-
-root.render(<Frontend />);
-```
-
-Then, run index.ts
-
-```sh
-bun --hot ./index.ts
-```
-
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+This project uses Ultracite (Biome-based). Run `bun x ultracite fix` before committing.
