@@ -23,6 +23,7 @@ export interface IStorage {
    * Get reranker weights for a project
    */
   getWeights(projectPath: string): Promise<RerankerState | null>;
+
   /**
    * Initialize the database for a project
    */
