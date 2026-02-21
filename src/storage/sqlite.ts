@@ -80,6 +80,7 @@ function createSchema(db: Database): void {
  */
 export class SQLiteStorage implements IStorage {
   private dbs: Map<string, Database> = new Map();
+  private configCache: Map<string, RerankerState["config"]> = new Map();
 
   private getDb(projectPath: string): Database {
     const existing = this.dbs.get(projectPath);
@@ -105,12 +106,13 @@ export class SQLiteStorage implements IStorage {
     const db = this.getDb(projectPath);
     const rows = db
       .query(
-        `SELECT id, summary, raw_dialogue, turn_references, embedding,
+        `SELECT id, project_path, summary, raw_dialogue, turn_references, embedding,
                 created_at, session_id
          FROM memories WHERE project_path = ?`
       )
       .all(projectPath) as Array<{
       id: string;
+      project_path: string;
       summary: string;
       raw_dialogue: string;
       turn_references: string | null;
@@ -121,6 +123,7 @@ export class SQLiteStorage implements IStorage {
 
     return rows.map((row) => ({
       id: row.id,
+      projectPath: row.project_path,
       topicSummary: row.summary,
       rawDialogue: row.raw_dialogue,
       turnReferences: row.turn_references
@@ -159,8 +162,8 @@ export class SQLiteStorage implements IStorage {
     ensureStorageDir(projectPath);
     const db = this.getDb(projectPath);
     db.query(
-      "UPDATE memories SET summary = ?, updated_at = ? WHERE id = ?"
-    ).run(topicSummary, Date.now(), id);
+      "UPDATE memories SET summary = ?, updated_at = ? WHERE id = ? AND project_path = ?"
+    ).run(topicSummary, Date.now(), id, projectPath);
   }
 
   async searchSimilar(
@@ -201,18 +204,22 @@ export class SQLiteStorage implements IStorage {
       return null;
     }
 
+    // Get cached config or use defaults
+    const cachedConfig = this.configCache.get(projectPath);
+    const config = cachedConfig ?? {
+      topK: 10,
+      topM: 3,
+      temperature: 1.0,
+      learningRate: 0.01,
+      baseline: 0.5,
+    };
+
     return {
       weights: {
         queryTransform: JSON.parse(row.w_query),
         memoryTransform: JSON.parse(row.w_memory),
       },
-      config: {
-        topK: 10,
-        topM: 3,
-        temperature: 1.0,
-        learningRate: 0.01,
-        baseline: 0.5,
-      },
+      config,
     };
   }
 
@@ -232,6 +239,9 @@ export class SQLiteStorage implements IStorage {
       JSON.stringify(weights.weights.memoryTransform),
       now
     );
+
+    // Cache config for retrieval
+    this.configCache.set(projectPath, weights.config);
   }
 
   async saveCitation(citation: CitationRecord): Promise<void> {

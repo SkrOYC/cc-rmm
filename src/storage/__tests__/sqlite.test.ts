@@ -55,6 +55,7 @@ describe("SQLiteStorage", () => {
 
       expect(memories).toHaveLength(1);
       expect(memories[0]?.id).toBe("test-1");
+      expect(memories[0]?.projectPath).toBe(testProjectPath);
       expect(memories[0]?.topicSummary).toBe(
         "User prefers TypeScript strict mode"
       );
@@ -100,6 +101,12 @@ describe("SQLiteStorage", () => {
       expect(retrieved?.weights.memoryTransform).toHaveLength(768);
       expect(retrieved?.weights.queryTransform[0]?.[0]).toBe(1);
       expect(retrieved?.weights.queryTransform[0]?.[1]).toBe(0);
+      // Verify config is returned correctly
+      expect(retrieved?.config.topK).toBe(10);
+      expect(retrieved?.config.topM).toBe(3);
+      expect(retrieved?.config.temperature).toBe(1.0);
+      expect(retrieved?.config.learningRate).toBe(0.01);
+      expect(retrieved?.config.baseline).toBe(0.5);
     });
 
     it("returns null for non-existent weights", async () => {
