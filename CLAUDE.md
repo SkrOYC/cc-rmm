@@ -19,7 +19,7 @@ bun x ultracite fix
 bun x ultracite check
 
 # Run the plugin (during development)
-bun run index.ts
+bun run src/index.ts
 ```
 
 ## Architecture
