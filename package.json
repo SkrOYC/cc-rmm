@@ -12,8 +12,8 @@
     "typescript": "^5"
   },
   "scripts": {
-    "check": "ultracite check",
-    "fix": "ultracite fix",
+    "check": "biome check --write",
+    "fix": "biome format --write",
     "test": "bun test"
   },
   "notes": "Hooks are invoked directly (e.g., bun src/hooks/user-prompt-submit.ts). The module entry point is for future routing logic."

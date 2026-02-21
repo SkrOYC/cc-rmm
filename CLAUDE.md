@@ -14,9 +14,9 @@ Based on the paper: *"In Prospect and Retrospect: Reflective Memory Management f
 # Install dependencies
 bun install
 
-# Lint and format (Ultracite)
-bun x ultracite fix
-bun x ultracite check
+# Lint and format
+bunx biome check --write
+bunx biome format --write
 
 # Run the plugin (during development)
 bun run src/index.ts
