@@ -6,6 +6,7 @@
 export interface MemoryEntry {
   embedding: number[]; // 768 dimensions
   id: string;
+  projectPath: string;
   rawDialogue: string;
   sessionId: string;
   timestamp: number;
