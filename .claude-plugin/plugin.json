@@ -1,0 +1,8 @@
+{
+  "name": "cc-rmm",
+  "version": "1.0.0",
+  "description": "Reflective Memory Management for Claude Code - Long-term conversational memory",
+  "hooks": "../hooks/hooks.json",
+  "author": "",
+  "license": "Apache-2.0"
+}

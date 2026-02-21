@@ -1,6 +1,6 @@
 {
   "name": "cc-rmm",
-  "module": "index.ts",
+  "module": "src/index.ts",
   "type": "module",
   "devDependencies": {
     "@biomejs/biome": "2.4.0",
@@ -12,6 +12,7 @@
   },
   "scripts": {
     "check": "ultracite check",
-    "fix": "ultracite fix"
+    "fix": "ultracite fix",
+    "test": "bun test"
   }
 }
