@@ -32,7 +32,11 @@ export interface IStorage {
   /**
    * Merge/update an existing memory
    */
-  mergeMemory(id: string, topicSummary: string): Promise<void>;
+  mergeMemory(
+    projectPath: string,
+    id: string,
+    topicSummary: string
+  ): Promise<void>;
 
   /**
    * Save a citation record

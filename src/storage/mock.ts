@@ -26,7 +26,11 @@ export class MockStorage implements IStorage {
     // No-op for mock
   }
 
-  async mergeMemory(_id: string, _topicSummary: string): Promise<void> {
+  async mergeMemory(
+    _projectPath: string,
+    _id: string,
+    _topicSummary: string
+  ): Promise<void> {
     // No-op for mock
   }
 
