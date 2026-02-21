@@ -1,5 +1,9 @@
 /**
  * Hook event router - determines which hook is firing
+ *
+ * TODO: Implement proper hook event detection from stdin
+ *       Currently returns null as hooks are called directly
+ *       (e.g., bun src/hooks/user-prompt-submit.ts)
  */
 import type { HookEvent } from "./types.ts";
 

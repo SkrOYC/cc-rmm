@@ -2,6 +2,7 @@
   "name": "cc-rmm",
   "module": "src/index.ts",
   "type": "module",
+  "description": "Reflective Memory Management for Claude Code",
   "devDependencies": {
     "@biomejs/biome": "2.4.0",
     "@types/bun": "latest",
@@ -14,5 +15,6 @@
     "check": "ultracite check",
     "fix": "ultracite fix",
     "test": "bun test"
-  }
+  },
+  "notes": "Hooks are invoked directly (e.g., bun src/hooks/user-prompt-submit.ts). The module entry point is for future routing logic."
 }
