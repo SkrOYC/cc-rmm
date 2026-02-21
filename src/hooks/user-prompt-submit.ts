@@ -4,9 +4,8 @@
  * Loads relevant memories into context before each user prompt.
  * This hook fires when the user submits a prompt, before Claude processes it.
  */
-
 import { loadMemories } from "../memory/loader.ts";
-import { readHooksInput } from "./utils.ts";
+import { formatMemories, readHooksInput } from "./utils.ts";
 
 async function main() {
   const input = await readHooksInput();
@@ -41,16 +40,6 @@ async function main() {
     // Don't exit with error - we don't want to block Claude
     process.exit(0);
   }
-}
-
-function formatMemories(memories: string[]): string {
-  if (memories.length === 0) {
-    return "";
-  }
-
-  return `<memories>
-${memories.join("\n\n")}
-</memories>`;
 }
 
 main();

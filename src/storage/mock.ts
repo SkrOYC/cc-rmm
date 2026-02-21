@@ -10,23 +10,19 @@ import type {
 } from "./types.ts";
 
 export class MockStorage implements IStorage {
-  async initDatabase(_projectPath: string): Promise<void> {
-    // No-op for mock
+  getCitations(_projectPath: string): Promise<CitationRecord[]> {
+    return Promise.resolve([]);
   }
 
   getMemories(_projectPath: string): Promise<MemoryEntry[]> {
     return Promise.resolve([]);
   }
 
-  searchSimilar(
-    _projectPath: string,
-    _embedding: number[],
-    _topK: number
-  ): Promise<SearchResult[]> {
-    return Promise.resolve([]);
+  getWeights(_projectPath: string): Promise<RerankerState | null> {
+    return Promise.resolve(null);
   }
 
-  async saveMemory(_memory: MemoryEntry): Promise<void> {
+  async initDatabase(_projectPath: string): Promise<void> {
     // No-op for mock
   }
 
@@ -34,8 +30,12 @@ export class MockStorage implements IStorage {
     // No-op for mock
   }
 
-  getWeights(_projectPath: string): Promise<RerankerState | null> {
-    return Promise.resolve(null);
+  async saveCitation(_citation: CitationRecord): Promise<void> {
+    // No-op for mock
+  }
+
+  async saveMemory(_memory: MemoryEntry): Promise<void> {
+    // No-op for mock
   }
 
   async saveWeights(
@@ -45,11 +45,11 @@ export class MockStorage implements IStorage {
     // No-op for mock
   }
 
-  async saveCitation(_citation: CitationRecord): Promise<void> {
-    // No-op for mock
-  }
-
-  getCitations(_projectPath: string): Promise<CitationRecord[]> {
+  searchSimilar(
+    _projectPath: string,
+    _embedding: number[],
+    _topK: number
+  ): Promise<SearchResult[]> {
     return Promise.resolve([]);
   }
 }

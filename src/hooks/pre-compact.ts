@@ -8,10 +8,9 @@
  * This hook fires before context compaction occurs, either manually (/compact)
  * or automatically when context is full.
  */
-
 import { extractMemories } from "../memory/extractor.ts";
 import { loadMemories } from "../memory/loader.ts";
-import { readHooksInput } from "./utils.ts";
+import { formatMemories, readHooksInput } from "./utils.ts";
 
 async function main() {
   const input = await readHooksInput();
@@ -61,16 +60,6 @@ async function main() {
     // Don't exit with error - we don't want to block Claude
     process.exit(0);
   }
-}
-
-function formatMemories(memories: string[]): string {
-  if (memories.length === 0) {
-    return "";
-  }
-
-  return `<memories>
-${memories.join("\n\n")}
-</memories>`;
 }
 
 main();

@@ -4,7 +4,6 @@
  * Extracts memories from the conversation when a session ends.
  * This hook fires when Claude finishes responding to the final prompt.
  */
-
 import { extractMemories } from "../memory/extractor.ts";
 import { readHooksInput } from "./utils.ts";
 
@@ -21,13 +20,14 @@ async function main() {
   );
 
   try {
-    // Extract memories from the transcript
-    const extracted = await extractMemories(
-      input.transcript_path ?? "",
-      input.session_id
-    );
-
-    console.error(`SessionEnd: Extracted ${extracted.length} memories`);
+    // Extract memories from the transcript if available
+    if (input.transcript_path) {
+      const extracted = await extractMemories(
+        input.transcript_path,
+        input.session_id
+      );
+      console.error(`SessionEnd: Extracted ${extracted.length} memories`);
+    }
 
     // Exit successfully - memories are saved by extractMemories
     process.exit(0);
