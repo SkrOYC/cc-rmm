@@ -125,9 +125,14 @@ let extractorPromise: Promise<EmbeddingExtractor> | null = null;
 
 function getExtractor(): Promise<EmbeddingExtractor> {
   if (!extractorPromise) {
-    extractorPromise = import("@xenova/transformers").then(({ pipeline }) =>
-      pipeline("feature-extraction", EMBEDDING_MODEL)
-    ) as Promise<EmbeddingExtractor>;
+    extractorPromise = (
+      import("@xenova/transformers").then(({ pipeline }) =>
+        pipeline("feature-extraction", EMBEDDING_MODEL)
+      ) as Promise<EmbeddingExtractor>
+    ).catch((error: unknown) => {
+      extractorPromise = null;
+      throw error;
+    });
   }
 
   return extractorPromise;
