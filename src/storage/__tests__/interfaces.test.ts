@@ -66,6 +66,7 @@ describe("MockStorage", () => {
     await expect(
       storage.saveMemory({
         id: "test",
+        projectPath: "/test/path",
         topicSummary: "test",
         rawDialogue: "test",
         timestamp: 123,

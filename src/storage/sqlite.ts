@@ -57,6 +57,7 @@ function createSchema(db: Database): void {
       project_path TEXT PRIMARY KEY,
       w_query BLOB NOT NULL,
       w_memory BLOB NOT NULL,
+      config TEXT,
       updated_at INTEGER NOT NULL
     );
 
@@ -80,8 +81,6 @@ function createSchema(db: Database): void {
  */
 export class SQLiteStorage implements IStorage {
   private readonly dbs: Map<string, Database> = new Map();
-  private readonly configCache: Map<string, RerankerState["config"]> =
-    new Map();
 
   private getDb(projectPath: string): Database {
     const existing = this.dbs.get(projectPath);
@@ -155,6 +154,7 @@ export class SQLiteStorage implements IStorage {
       memory.timestamp,
       memory.timestamp
     );
+    return Promise.resolve();
   }
 
   mergeMemory(
@@ -193,12 +193,13 @@ export class SQLiteStorage implements IStorage {
     const db = this.getDb(projectPath);
     const row = db
       .query(
-        "SELECT w_query, w_memory, updated_at FROM weights WHERE project_path = ?"
+        "SELECT w_query, w_memory, config, updated_at FROM weights WHERE project_path = ?"
       )
       .get(projectPath) as
       | {
           w_query: string;
           w_memory: string;
+          config: string | null;
           updated_at: number;
         }
       | undefined;
@@ -207,15 +208,15 @@ export class SQLiteStorage implements IStorage {
       return Promise.resolve(null);
     }
 
-    // Get cached config or use defaults
-    const cachedConfig = this.configCache.get(projectPath);
-    const config = cachedConfig ?? {
+    // Parse config from DB, or use defaults
+    const defaultConfig = {
       topK: 10,
       topM: 3,
       temperature: 1.0,
       learningRate: 0.01,
       baseline: 0.5,
     };
+    const config = row.config ? JSON.parse(row.config) : defaultConfig;
 
     return Promise.resolve({
       weights: {
@@ -231,17 +232,16 @@ export class SQLiteStorage implements IStorage {
     const now = Date.now();
 
     db.query(
-      `INSERT OR REPLACE INTO weights (project_path, w_query, w_memory, updated_at)
-       VALUES (?, ?, ?, ?)`
+      `INSERT OR REPLACE INTO weights (project_path, w_query, w_memory, config, updated_at)
+       VALUES (?, ?, ?, ?, ?)`
     ).run(
       projectPath,
       JSON.stringify(weights.weights.queryTransform),
       JSON.stringify(weights.weights.memoryTransform),
+      JSON.stringify(weights.config),
       now
     );
 
-    // Cache config for retrieval
-    this.configCache.set(projectPath, weights.config);
     return Promise.resolve();
   }
 
@@ -302,9 +302,11 @@ function cosineSimilarity(a: number[], b: number[]): number {
   let normB = 0;
 
   for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
+    const av = a[i]!;
+    const bv = b[i]!;
+    dotProduct += av * bv;
+    normA += av * av;
+    normB += bv * bv;
   }
 
   const denominator = Math.sqrt(normA) * Math.sqrt(normB);
