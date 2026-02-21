@@ -68,7 +68,7 @@ function createSchema(db: Database): void {
       session_id TEXT NOT NULL,
       useful INTEGER NOT NULL,
       created_at INTEGER NOT NULL,
-      FOREIGN KEY (memory_id) REFERENCES memories(id)
+      FOREIGN KEY (memory_id) REFERENCES memories(id) ON DELETE CASCADE
     );
 
     CREATE INDEX IF NOT EXISTS idx_citations_project ON citations(project_path);
