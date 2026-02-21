@@ -305,12 +305,12 @@ flowchart LR
 >   - `gumbelSoftmaxSample`: Top-M selection with probability distribution
 >   - `computeScore`: q'·m' scoring (constitutional requirement)
 
-> **[T-011] Adapt Memory Extraction**
+> **[T-011] Adapt Memory Extraction & Update**
 >
 > - **Type:** Feature
-> - **Effort:** 2
+> - **Effort:** 3
 > - **Dependencies:** T-010
-> - **Description:** Copy memory-extraction.ts, adapt to work with transcript file input instead of LangChain messages.
+> - **Description:** Copy memory-extraction.ts, adapt to work with transcript file input instead of LangChain messages. Also adapt memory-update.ts for add/merge decision logic.
 > - **Acceptance Criteria:**
 >
 > ```gherkin
@@ -320,11 +320,21 @@ flowchart LR
 > And returns MemoryEntry[] with embeddings
 > ```
 >
+> ```gherkin
+> Given a newly extracted memory and existing similar memories
+> When I call decideUpdateAction
+> Then it returns an Add or Merge action per memory
+> And Merge actions include the ID of the memory to merge into
+> ```
+>
 > - **Tests:**
 >   - `src/core/algorithms/__tests__/extraction.test.ts`
 >   - Parse valid JSONL transcript with turn boundaries
 >   - Extract memories from transcript (mock LLM response)
 >   - MemoryEntry includes: summary, turnReferences, embedding
+>   - `src/core/algorithms/__tests__/memory-update.test.ts`
+>   - `decideUpdateAction`: returns Add for dissimilar memories
+>   - `decideUpdateAction`: returns Merge for similar memories with merged summary
 
 > **[T-012] Implement Turn Reference Tracking**
 >
