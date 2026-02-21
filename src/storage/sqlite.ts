@@ -79,8 +79,9 @@ function createSchema(db: Database): void {
  * SQLite storage implementation
  */
 export class SQLiteStorage implements IStorage {
-  private dbs: Map<string, Database> = new Map();
-  private configCache: Map<string, RerankerState["config"]> = new Map();
+  private readonly dbs: Map<string, Database> = new Map();
+  private readonly configCache: Map<string, RerankerState["config"]> =
+    new Map();
 
   private getDb(projectPath: string): Database {
     const existing = this.dbs.get(projectPath);
@@ -95,14 +96,15 @@ export class SQLiteStorage implements IStorage {
     return db;
   }
 
-  async initDatabase(projectPath: string): Promise<void> {
+  initDatabase(projectPath: string): Promise<void> {
     // Ensure the .cc-rmm directory exists
     ensureStorageDir(projectPath);
     const db = this.getDb(projectPath);
     createSchema(db);
+    return Promise.resolve();
   }
 
-  async getMemories(projectPath: string): Promise<MemoryEntry[]> {
+  getMemories(projectPath: string): Promise<MemoryEntry[]> {
     const db = this.getDb(projectPath);
     const rows = db
       .query(
@@ -121,7 +123,7 @@ export class SQLiteStorage implements IStorage {
       session_id: string;
     }>;
 
-    return rows.map((row) => ({
+    const memories = rows.map((row) => ({
       id: row.id,
       projectPath: row.project_path,
       topicSummary: row.summary,
@@ -133,9 +135,10 @@ export class SQLiteStorage implements IStorage {
       timestamp: row.created_at,
       sessionId: row.session_id,
     }));
+    return Promise.resolve(memories);
   }
 
-  async saveMemory(memory: MemoryEntry): Promise<void> {
+  saveMemory(memory: MemoryEntry): Promise<void> {
     const db = this.getDb(memory.projectPath);
     db.query(
       `INSERT INTO memories (id, project_path, summary, raw_dialogue,
@@ -154,39 +157,39 @@ export class SQLiteStorage implements IStorage {
     );
   }
 
-  async mergeMemory(
+  mergeMemory(
     projectPath: string,
     id: string,
     topicSummary: string
   ): Promise<void> {
-    ensureStorageDir(projectPath);
     const db = this.getDb(projectPath);
     db.query(
       "UPDATE memories SET summary = ?, updated_at = ? WHERE id = ? AND project_path = ?"
     ).run(topicSummary, Date.now(), id, projectPath);
+    return Promise.resolve();
   }
 
-  async searchSimilar(
+  searchSimilar(
     projectPath: string,
     embedding: number[],
     topK: number
   ): Promise<SearchResult[]> {
-    const memories = await this.getMemories(projectPath);
+    return this.getMemories(projectPath).then((memories) => {
+      // Compute cosine similarity for each memory
+      const results: SearchResult[] = memories
+        .map((memory) => {
+          const similarity = cosineSimilarity(embedding, memory.embedding);
+          return { memory, score: similarity };
+        })
+        .filter((r) => r.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, topK);
 
-    // Compute cosine similarity for each memory
-    const results: SearchResult[] = memories
-      .map((memory) => {
-        const similarity = cosineSimilarity(embedding, memory.embedding);
-        return { memory, score: similarity };
-      })
-      .filter((r) => r.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, topK);
-
-    return results;
+      return results;
+    });
   }
 
-  async getWeights(projectPath: string): Promise<RerankerState | null> {
+  getWeights(projectPath: string): Promise<RerankerState | null> {
     const db = this.getDb(projectPath);
     const row = db
       .query(
@@ -201,7 +204,7 @@ export class SQLiteStorage implements IStorage {
       | undefined;
 
     if (!row) {
-      return null;
+      return Promise.resolve(null);
     }
 
     // Get cached config or use defaults
@@ -214,19 +217,16 @@ export class SQLiteStorage implements IStorage {
       baseline: 0.5,
     };
 
-    return {
+    return Promise.resolve({
       weights: {
         queryTransform: JSON.parse(row.w_query),
         memoryTransform: JSON.parse(row.w_memory),
       },
       config,
-    };
+    });
   }
 
-  async saveWeights(
-    projectPath: string,
-    weights: RerankerState
-  ): Promise<void> {
+  saveWeights(projectPath: string, weights: RerankerState): Promise<void> {
     const db = this.getDb(projectPath);
     const now = Date.now();
 
@@ -242,9 +242,10 @@ export class SQLiteStorage implements IStorage {
 
     // Cache config for retrieval
     this.configCache.set(projectPath, weights.config);
+    return Promise.resolve();
   }
 
-  async saveCitation(citation: CitationRecord): Promise<void> {
+  saveCitation(citation: CitationRecord): Promise<void> {
     const db = this.getDb(citation.projectPath);
     db.query(
       `INSERT INTO citations (id, project_path, memory_id, session_id, useful, created_at)
@@ -257,9 +258,10 @@ export class SQLiteStorage implements IStorage {
       citation.useful ? 1 : 0,
       citation.createdAt
     );
+    return Promise.resolve();
   }
 
-  async getCitations(projectPath: string): Promise<CitationRecord[]> {
+  getCitations(projectPath: string): Promise<CitationRecord[]> {
     const db = this.getDb(projectPath);
     const rows = db
       .query(
@@ -275,7 +277,7 @@ export class SQLiteStorage implements IStorage {
       created_at: number;
     }>;
 
-    return rows.map((row) => ({
+    const citations = rows.map((row) => ({
       id: row.id,
       projectPath: row.project_path,
       memoryId: row.memory_id,
@@ -283,6 +285,7 @@ export class SQLiteStorage implements IStorage {
       useful: row.useful === 1,
       createdAt: row.created_at,
     }));
+    return Promise.resolve(citations);
   }
 }
 
