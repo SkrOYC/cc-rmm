@@ -3,6 +3,7 @@
  */
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
+import { searchSimilarByCosine } from "../embeddings/similarity.ts";
 import type { IStorage } from "./interfaces.ts";
 import type {
   CitationRecord,
@@ -174,19 +175,14 @@ export class SQLiteStorage implements IStorage {
     embedding: number[],
     topK: number
   ): Promise<SearchResult[]> {
-    return this.getMemories(projectPath).then((memories) => {
-      // Compute cosine similarity for each memory
-      const results: SearchResult[] = memories
-        .map((memory) => {
-          const similarity = cosineSimilarity(embedding, memory.embedding);
-          return { memory, score: similarity };
+    return this.getMemories(projectPath).then((memories) =>
+      searchSimilarByCosine(embedding, memories, topK).map(
+        ({ item, score }) => ({
+          memory: item,
+          score,
         })
-        .filter((r) => r.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, topK);
-
-      return results;
-    });
+      )
+    );
   }
 
   getWeights(projectPath: string): Promise<RerankerState | null> {
@@ -287,32 +283,4 @@ export class SQLiteStorage implements IStorage {
     }));
     return Promise.resolve(citations);
   }
-}
-
-/**
- * Compute cosine similarity between two vectors
- */
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length || a.length === 0) {
-    return 0;
-  }
-
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < a.length; i++) {
-    const av = a[i]!;
-    const bv = b[i]!;
-    dotProduct += av * bv;
-    normA += av * av;
-    normB += bv * bv;
-  }
-
-  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
-  if (denominator === 0) {
-    return 0;
-  }
-
-  return dotProduct / denominator;
 }
