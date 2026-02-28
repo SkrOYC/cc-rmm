@@ -153,7 +153,7 @@ function parseTurnId(value: unknown): number | null {
 
 function parseTranscriptLine(
   line: string,
-  lineIndex: number
+  dialogueLineIndex: number
 ): TranscriptTurn | null {
   const parsed = JSON.parse(line) as unknown;
   if (!isRecord(parsed)) {
@@ -177,7 +177,7 @@ function parseTranscriptLine(
     parseTurnId(isRecord(parsed.message) ? parsed.message.turn_id : null) ??
     parseTurnId(isRecord(parsed.message) ? parsed.message.turnId : null);
 
-  const turnId = explicitTurnId ?? Math.floor(lineIndex / 2);
+  const turnId = explicitTurnId ?? Math.floor(dialogueLineIndex / 2);
 
   const speaker = normalizeSpeaker(resolveRoleLabel(parsed));
 
@@ -198,6 +198,7 @@ export async function parseTranscriptJsonl(
     .filter((line) => line.length > 0);
 
   const turns: TranscriptTurn[] = [];
+  let dialogueLineIndex = 0;
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex];
@@ -206,9 +207,10 @@ export async function parseTranscriptJsonl(
     }
 
     try {
-      const parsed = parseTranscriptLine(line, lineIndex);
+      const parsed = parseTranscriptLine(line, dialogueLineIndex);
       if (parsed) {
         turns.push(parsed);
+        dialogueLineIndex += 1;
       }
     } catch (error) {
       const errorMessage =

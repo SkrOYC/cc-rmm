@@ -66,6 +66,29 @@ describe("parseTranscriptJsonl", () => {
       turns.some((turn) => turn.content.includes("VERY_LARGE_TOOL_PAYLOAD"))
     ).toBe(false);
   });
+
+  it("derives fallback turn IDs from dialogue lines only", async () => {
+    const transcriptPath = createTranscriptFile([
+      { role: "user", content: "Question without explicit turn id" },
+      { type: "tool_result", content: "non-dialogue payload" },
+      { role: "assistant", content: "Answer without explicit turn id" },
+    ]);
+
+    const turns = await parseTranscriptJsonl(transcriptPath);
+
+    expect(turns).toEqual<TranscriptTurn[]>([
+      {
+        turnId: 0,
+        speaker: "SPEAKER_1",
+        content: "Question without explicit turn id",
+      },
+      {
+        turnId: 0,
+        speaker: "SPEAKER_2",
+        content: "Answer without explicit turn id",
+      },
+    ]);
+  });
 });
 
 describe("extractMemories", () => {
