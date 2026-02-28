@@ -210,8 +210,12 @@ function parseMergeFromText(
   }
 
   const indexMatch = normalizedText.match(MERGE_INDEX_REGEX);
-  const index = indexMatch?.[1] ? Number.parseInt(indexMatch[1], 10) : 0;
-  const target = similarMemories[index] ?? similarMemories[0];
+  if (!indexMatch?.[1]) {
+    return null;
+  }
+
+  const index = Number.parseInt(indexMatch[1], 10);
+  const target = similarMemories[index];
 
   if (!target) {
     return null;

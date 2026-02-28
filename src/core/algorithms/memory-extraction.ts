@@ -4,6 +4,29 @@ import { CORE_EMBEDDING_DIMENSION, type MemoryEntry } from "../types/memory.ts";
 import { buildExcludedTurnsPrompt } from "./turn-tracking.ts";
 
 const CODE_FENCE_JSON_REGEX = /```(?:json)?\s*([\s\S]*?)\s*```/i;
+const DIALOGUE_ROLE_LABELS = new Set([
+  "user",
+  "human",
+  "humanmessage",
+  "assistant",
+  "ai",
+  "aimessage",
+]);
+const NON_DIALOGUE_ROLE_LABELS = new Set([
+  "tool",
+  "tool_result",
+  "tool_use",
+  "function",
+  "function_call",
+  "function_response",
+  "system",
+]);
+const NON_DIALOGUE_CONTENT_BLOCK_TYPES = new Set([
+  "tool_result",
+  "tool_use",
+  "server_tool_use",
+  "server_tool_result",
+]);
 
 export interface TranscriptTurn {
   content: string;
@@ -51,19 +74,59 @@ function extractContentFromUnknown(value: unknown): string {
     return "";
   }
 
+  const contentBlockType =
+    typeof value.type === "string" ? value.type.toLowerCase() : null;
+  if (
+    contentBlockType &&
+    NON_DIALOGUE_CONTENT_BLOCK_TYPES.has(contentBlockType)
+  ) {
+    return "";
+  }
+
   if ("text" in value) {
     return extractContentFromUnknown(value.text);
   }
 
-  if ("content" in value) {
+  if ("content" in value && !("type" in value)) {
     return extractContentFromUnknown(value.content);
   }
 
-  if ("message" in value) {
-    return extractContentFromUnknown(value.message);
+  return "";
+}
+
+function resolveRoleLabel(parsed: Record<string, unknown>): string | null {
+  const messageRecord = isRecord(parsed.message) ? parsed.message : null;
+
+  const label =
+    parsed.role ??
+    parsed.type ??
+    messageRecord?.role ??
+    messageRecord?.type ??
+    null;
+
+  return typeof label === "string" ? label.toLowerCase() : null;
+}
+
+function isDialogueRecord(parsed: Record<string, unknown>): boolean {
+  const label = resolveRoleLabel(parsed);
+
+  if (!label) {
+    return true;
   }
 
-  return "";
+  if (NON_DIALOGUE_ROLE_LABELS.has(label)) {
+    return false;
+  }
+
+  return DIALOGUE_ROLE_LABELS.has(label);
+}
+
+function resolveContentPayload(parsed: Record<string, unknown>): unknown {
+  if (isRecord(parsed.message) && "content" in parsed.message) {
+    return parsed.message.content;
+  }
+
+  return parsed.content;
 }
 
 function normalizeSpeaker(value: unknown): "SPEAKER_1" | "SPEAKER_2" {
@@ -97,7 +160,13 @@ function parseTranscriptLine(
     return null;
   }
 
-  const content = extractContentFromUnknown(parsed).trim();
+  if (!isDialogueRecord(parsed)) {
+    return null;
+  }
+
+  const content = extractContentFromUnknown(
+    resolveContentPayload(parsed)
+  ).trim();
   if (content.length === 0) {
     return null;
   }
@@ -110,12 +179,7 @@ function parseTranscriptLine(
 
   const turnId = explicitTurnId ?? Math.floor(lineIndex / 2);
 
-  const speaker = normalizeSpeaker(
-    parsed.role ??
-      parsed.type ??
-      (isRecord(parsed.message) ? parsed.message.role : undefined) ??
-      (isRecord(parsed.message) ? parsed.message.type : undefined)
-  );
+  const speaker = normalizeSpeaker(resolveRoleLabel(parsed));
 
   return {
     turnId,

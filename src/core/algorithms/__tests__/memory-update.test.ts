@@ -97,4 +97,44 @@ describe("decideUpdateAction", () => {
       },
     ]);
   });
+
+  it("requires explicit merge target in text fallback", async () => {
+    const similar: SimilarMemory[] = [
+      { id: "memory-0", topicSummary: "summary 0" },
+      { id: "memory-1", topicSummary: "summary 1" },
+    ];
+
+    const actions = await decideUpdateAction(
+      createMemory("new detail"),
+      similar,
+      {
+        callModel: async () => "merge this",
+      }
+    );
+
+    expect(actions).toEqual([{ action: "Add" }]);
+  });
+
+  it("supports merge text fallback only with explicit index", async () => {
+    const similar: SimilarMemory[] = [
+      { id: "memory-0", topicSummary: "summary 0" },
+      { id: "memory-1", topicSummary: "summary 1" },
+    ];
+
+    const actions = await decideUpdateAction(
+      createMemory("new detail"),
+      similar,
+      {
+        callModel: async () => "please merge index 1",
+      }
+    );
+
+    expect(actions).toEqual([
+      {
+        action: "Merge",
+        memoryId: "memory-1",
+        mergedSummary: "(merged summary)",
+      },
+    ]);
+  });
 });

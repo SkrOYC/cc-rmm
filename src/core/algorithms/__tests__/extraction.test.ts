@@ -45,6 +45,27 @@ describe("parseTranscriptJsonl", () => {
       { turnId: 1, speaker: "SPEAKER_2", content: "Noted" },
     ]);
   });
+
+  it("excludes tool payload blocks from parsed dialogue", async () => {
+    const transcriptPath = createTranscriptFile([
+      { role: "user", content: "Please run the command" },
+      {
+        type: "tool_result",
+        content:
+          "VERY_LARGE_TOOL_PAYLOAD_SHOULD_NOT_BE_INCLUDED_IN_MEMORY_EXTRACTION",
+      },
+      { role: "assistant", content: "Done. The command succeeded." },
+    ]);
+
+    const turns = await parseTranscriptJsonl(transcriptPath);
+
+    expect(turns).toHaveLength(2);
+    expect(turns[0]?.content).toContain("Please run the command");
+    expect(turns[1]?.content).toContain("Done. The command succeeded.");
+    expect(
+      turns.some((turn) => turn.content.includes("VERY_LARGE_TOOL_PAYLOAD"))
+    ).toBe(false);
+  });
 });
 
 describe("extractMemories", () => {
