@@ -43,7 +43,7 @@ The system has two main components:
 
 ## Implementation Status
 
-See Tasks.md for the implementation plan (18 tickets). The project is in Phase 1: Infrastructure Foundation.
+See docs/Tasks.md for the implementation plan (18 tickets). The project is in Phase 1: Infrastructure Foundation.
 
 ## Code Standards
 
