@@ -38,7 +38,11 @@ async function main() {
 
     // Phase 2: Re-inject existing memories for the compacted context
     console.error("PreCompact: Phase 2 - Re-injecting memories");
-    const memories = await loadMemories(input.cwd, input.session_id);
+    const memories = await loadMemories(
+      input.cwd,
+      input.session_id,
+      input.prompt
+    );
 
     if (memories.length > 0) {
       // Format memories for injection

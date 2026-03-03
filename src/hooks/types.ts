@@ -12,6 +12,7 @@ export interface HookInput {
   custom_instructions?: string;
   cwd: string;
   hook_event_name: HookEvent;
+  prompt?: string;
   session_id: string;
   transcript_path?: string;
   trigger?: string;

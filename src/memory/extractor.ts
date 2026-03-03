@@ -5,12 +5,14 @@
  * and embedding services.
  */
 import { randomUUID } from "node:crypto";
+import { createClaudeModelCaller } from "../adapters/claude-cli.ts";
 import { extractMemories as coreExtractMemories } from "../core/algorithms/memory-extraction.ts";
 import {
   type DecideUpdateDependencies,
   decideUpdateAction,
   type UpdateAction,
 } from "../core/algorithms/memory-update.ts";
+import { getReferencedTurnIds } from "../core/algorithms/turn-tracking.ts";
 import { embedDocument } from "../embeddings/nomic.ts";
 import { SQLiteStorage } from "../storage/sqlite.ts";
 import type { MemoryEntry, SearchResult } from "../storage/types.ts";
@@ -40,16 +42,17 @@ interface ExtractionDependencies {
 }
 
 /**
- * Create default dependencies with mocked LLM calls
+ * Create dependencies for memory extraction
  *
- * TODO: Replace with real Claude CLI adapter (T-013)
+ * @param transcriptPath - Path to the transcript file
+ * @param excludedTurnIds - Turn IDs to exclude from extraction
  */
-function createDependencies(): ExtractionDependencies {
+function createDependencies(
+  transcriptPath: string,
+  excludedTurnIds: number[]
+): ExtractionDependencies {
   return {
-    callModel: (_prompt: string): Promise<string> => {
-      // Mock returns empty - real implementation in T-013
-      return Promise.resolve('{"memories": []}');
-    },
+    callModel: createClaudeModelCaller(transcriptPath, excludedTurnIds),
     embedDocuments: (summaries: string[]): Promise<number[][]> => {
       // Use embedDocument in a loop until batch embedding is available
       return Promise.all(summaries.map((s) => embedDocument(s)));
@@ -78,15 +81,19 @@ export async function extractMemories(
   // Initialize database
   await storage.initDatabase(project);
 
-  // Create dependencies with mocks
-  const dependencies = createDependencies();
+  // Get existing memories to determine which turns have already been considered
+  const existingMemories = await storage.getMemories(project);
+  const excludedTurnIds = getReferencedTurnIds(existingMemories);
+
+  // Create dependencies with real Claude CLI adapter
+  const dependencies = createDependencies(transcriptPath, excludedTurnIds);
 
   // Call the core extraction algorithm
   const options = {
     projectPath: project,
     sessionId,
     transcriptPath,
-    excludedTurnIds: [],
+    excludedTurnIds,
   };
 
   let extractedMemories: MemoryEntry[];
