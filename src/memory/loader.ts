@@ -3,9 +3,9 @@
  *
  * Implements the retrieval pipeline:
  * 1. Embed the user prompt
- * 2. Search similar memories via storage
- * 3. Apply reranking with W_q, W_m matrices
- * 4. Return formatted memory strings
+ * 2. Efficiently search similar memories via storage (top-K using cosine similarity)
+ * 3. Apply reranking with W_q, W_m matrices to those K candidates
+ * 4. Return top-M formatted memory strings
  */
 
 import {
@@ -17,7 +17,7 @@ import {
 import { CORE_EMBEDDING_DIMENSION } from "../core/types/memory.ts";
 import { embedQuery } from "../embeddings/nomic.ts";
 import { SQLiteStorage } from "../storage/sqlite.ts";
-import type { RerankerState } from "../storage/types.ts";
+import type { RerankerState, SearchResult } from "../storage/types.ts";
 
 /** Default configuration values */
 const DEFAULT_TOP_K = 20; // Number of memories to retrieve initially
@@ -85,6 +85,12 @@ function createIdentityMatrix(dimension: number): number[][] {
 /**
  * Load relevant memories for the current context
  *
+ * Scalable implementation:
+ * 1. Embed the user prompt
+ * 2. Use efficient similarity search to get top-K candidates (not all memories)
+ * 3. Apply reranking with W_q, W_m matrices to those K candidates
+ * 4. Return top-M formatted memory strings
+ *
  * @param projectPath - The project directory path
  * @param sessionId - The current session ID
  * @param userPrompt - The user's prompt (optional, for embedding)
@@ -100,40 +106,47 @@ export async function loadMemories(
   // Initialize database
   await storage.initDatabase(projectPath);
 
-  // Get all project memories
-  const memories = await storage.getMemories(projectPath);
-
-  if (memories.length === 0) {
-    return [];
-  }
-
   // Get or initialize reranker weights
   const weights = await getOrInitWeights(projectPath, storage);
 
-  // Embed the user prompt if provided, otherwise use empty query
-  let queryEmbedding: number[];
-  if (userPrompt && userPrompt.trim().length > 0) {
-    queryEmbedding = await embedQuery(userPrompt);
-  } else {
-    // If no prompt, return all memories (unranked)
-    return memories.map((m) => formatMemorySummary(m));
+  // If no prompt, we can't do semantic search - return empty
+  if (!userPrompt || userPrompt.trim().length === 0) {
+    return [];
   }
 
-  // Adapt query embedding using W_q
+  // Embed the user prompt
+  const queryEmbedding = await embedQuery(userPrompt);
+
+  // Get top-K candidates using efficient cosine similarity search
+  // This only loads K memories into memory, not all memories
+  const topK = weights.config.topK ?? DEFAULT_TOP_K;
+  const searchResults: SearchResult[] = await storage.searchSimilar(
+    projectPath,
+    queryEmbedding,
+    topK
+  );
+
+  if (searchResults.length === 0) {
+    return [];
+  }
+
+  // Adapt query embedding using W_q for reranking
   const adaptedQuery = adaptEmbedding(
     queryEmbedding,
     weights.weights.queryTransform
   );
 
-  // Score all memories
+  // Apply reranking to only the K candidates
   const scoredMemories: ScoredMemory[] = [];
 
-  for (const memory of memories) {
+  for (const result of searchResults) {
+    const memory = result.memory;
+
     if (
       !memory.embedding ||
       memory.embedding.length !== CORE_EMBEDDING_DIMENSION
     ) {
-      continue; // Skip memories without valid embeddings
+      continue;
     }
 
     // Adapt memory embedding using W_m
@@ -142,8 +155,8 @@ export async function loadMemories(
       weights.weights.memoryTransform
     );
 
-    // Compute score
-    const score = computeScore(adaptedQuery, adaptedMemory);
+    // Compute reranked score
+    const rerankScore = computeScore(adaptedQuery, adaptedMemory);
 
     scoredMemories.push({
       id: memory.id,
@@ -153,17 +166,13 @@ export async function loadMemories(
       timestamp: memory.timestamp,
       embedding: memory.embedding,
       turnReferences: memory.turnReferences,
-      relevanceScore: score,
-      rerankScore: score,
+      relevanceScore: result.score, // Original cosine similarity
+      rerankScore, // Reranked score
     });
   }
 
-  // Sort by relevance score (descending)
-  scoredMemories.sort((a, b) => b.relevanceScore - a.relevanceScore);
-
-  // Get top-K initial results
-  const topK = weights.config.topK ?? DEFAULT_TOP_K;
-  const topMemories = scoredMemories.slice(0, topK);
+  // Sort by rerank score (descending)
+  scoredMemories.sort((a, b) => (b.rerankScore ?? 0) - (a.rerankScore ?? 0));
 
   // Apply gumbel softmax sampling for top-M selection
   const topM = weights.config.topM ?? DEFAULT_TOP_M;
@@ -171,11 +180,11 @@ export async function loadMemories(
 
   let finalMemories: ScoredMemory[];
 
-  if (topMemories.length <= topM) {
-    finalMemories = topMemories;
+  if (scoredMemories.length <= topM) {
+    finalMemories = scoredMemories;
   } else {
     // Use gumbel softmax sampling
-    const scores = topMemories.map((m) => m.relevanceScore);
+    const scores = scoredMemories.map((m) => m.rerankScore ?? 0);
     const samplingResult = gumbelSoftmaxSample(scores, topM, temperature);
     finalMemories = samplingResult.selectedMemories;
   }
