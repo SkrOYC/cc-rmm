@@ -15,6 +15,9 @@ import { embedDocument } from "../embeddings/nomic.ts";
 import { SQLiteStorage } from "../storage/sqlite.ts";
 import type { MemoryEntry, SearchResult } from "../storage/types.ts";
 
+/** Number of similar memories to retrieve for merge decisions */
+const SIMILARITY_SEARCH_TOP_K = 5;
+
 /**
  * Dependency injection container for extraction
  */
@@ -69,12 +72,6 @@ export async function extractMemories(
   const storage = new SQLiteStorage();
   await storage.initDatabase(project);
 
-  // Get existing memories for merge decisions
-  const existingMemories = await storage.getMemories(project);
-  console.error(
-    `extractMemories: Found ${existingMemories.length} existing memories`
-  );
-
   // Create dependencies with mocks
   const dependencies = createDependencies();
 
@@ -96,12 +93,17 @@ export async function extractMemories(
   // Process each extracted memory: decide Add or Merge, then save
   const savedMemories: MemoryEntry[] = [];
 
+  // Dependencies for update decisions (same for all memories)
+  const updateDependencies: DecideUpdateDependencies = {
+    callModel: dependencies.callModel,
+  };
+
   for (const memory of extractedMemories) {
     // Search for similar existing memories
     const similarResults = await storage.searchSimilar(
       project,
       memory.embedding,
-      5 // topK
+      SIMILARITY_SEARCH_TOP_K
     );
     const similarMemories = similarResults.map((r: SearchResult) => ({
       id: r.memory.id,
@@ -109,10 +111,6 @@ export async function extractMemories(
     }));
 
     // Decide whether to Add or Merge
-    const updateDependencies: DecideUpdateDependencies = {
-      callModel: dependencies.callModel,
-    };
-
     const actions: UpdateAction[] = await decideUpdateAction(
       memory,
       similarMemories,
