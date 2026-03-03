@@ -20,7 +20,11 @@ async function main() {
   );
 
   try {
-    const memories = await loadMemories(input.cwd, input.session_id);
+    const memories = await loadMemories(
+      input.cwd,
+      input.session_id,
+      input.prompt
+    );
 
     if (memories.length > 0) {
       // Format memories for injection into context
