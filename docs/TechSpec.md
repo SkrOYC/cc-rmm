@@ -250,6 +250,8 @@ PROMPT
 }
 ```
 
+> **Note:** PreCompact supports both `manual` and `auto` matchers to handle both user-triggered and Claude Code automatic compaction events.
+
 **Actions:**
 
 1. **Full re-extraction** (Prospective Reflection): Read full transcript, call Claude CLI to extract memories from all turns
@@ -273,8 +275,8 @@ cc-rmm/
 │   └── plugin.json										# Plugin manifest
 ├── hooks/
 │   ├── hooks.json										# Hook configurations
-│   ├── session-start.ts							# Memory loading
-│   ├── stop.ts												# Memory extraction
+│   ├── user-prompt-submit.ts					# Memory loading
+│   ├── session-end.ts									# Memory extraction
 │   └── pre-compact.ts								# Memory re-injection
 ├── src/
 │   ├── core/													# HARVESTED (adapted from rmm-middleware)
@@ -332,7 +334,7 @@ This ensures PreCompact extraction adds new memories without duplicating content
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                    Hook Scripts (CLI)                        │
-│              (session-start, stop, pre-compact)              │
+│              (user-prompt-submit, session-end, pre-compact)              │
 └──────────────────────────────────────────────────────────────┘
                               │
                               ▼

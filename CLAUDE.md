@@ -11,15 +11,10 @@ Based on the paper: *"In Prospect and Retrospect: Reflective Memory Management f
 ## Key Commands
 
 ```bash
-# Install dependencies
-bun install
-
-# Lint and format
-bunx biome check --write
-bunx biome format --write
-
-# Run the plugin (during development)
-bun run src/index.ts
+bun install          # Install dependencies
+bun run check        # Lint and format
+bun run test         # Run tests
+bun run src/index.ts # Run the plugin (dev)
 ```
 
 ## Architecture
@@ -43,8 +38,8 @@ The system has two main components:
 
 ## Implementation Status
 
-See docs/Tasks.md for the implementation plan (18 tickets). The project is in Phase 1: Infrastructure Foundation.
+See docs/Tasks.md for the implementation plan (19 tickets). The project is in Phase 1 (MVP) - completed through T-012 (Core Algorithms).
 
 ## Code Standards
 
-This project uses Ultracite (Biome-based). Run `bun x ultracite fix` before committing.
+Run `bun run check` and `bun run fix` before committing.
