@@ -183,9 +183,12 @@ export async function loadMemories(
   if (scoredMemories.length <= topM) {
     finalMemories = scoredMemories;
   } else {
-    // Use gumbel softmax sampling
-    const scores = scoredMemories.map((m) => m.rerankScore ?? 0);
-    const samplingResult = gumbelSoftmaxSample(scores, topM, temperature);
+    // Use gumbel softmax sampling (pass full ScoredMemory array, not just scores)
+    const samplingResult = gumbelSoftmaxSample(
+      scoredMemories,
+      topM,
+      temperature
+    );
     finalMemories = samplingResult.selectedMemories;
   }
 
