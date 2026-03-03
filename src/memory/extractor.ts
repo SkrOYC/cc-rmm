@@ -18,6 +18,17 @@ import type { MemoryEntry, SearchResult } from "../storage/types.ts";
 /** Number of similar memories to retrieve for merge decisions */
 const SIMILARITY_SEARCH_TOP_K = 5;
 
+/** Singleton storage instance */
+let storageInstance: SQLiteStorage | null = null;
+
+/** Get or create storage instance */
+function getStorage(): SQLiteStorage {
+  if (!storageInstance) {
+    storageInstance = new SQLiteStorage();
+  }
+  return storageInstance;
+}
+
 /**
  * Dependency injection container for extraction
  */
@@ -36,9 +47,7 @@ interface ExtractionDependencies {
 function createDependencies(): ExtractionDependencies {
   return {
     callModel: (_prompt: string): Promise<string> => {
-      console.error(
-        "extractMemories: Mock LLM call - returning empty memories"
-      );
+      // Mock returns empty - real implementation in T-013
       return Promise.resolve('{"memories": []}');
     },
     embedDocuments: (summaries: string[]): Promise<number[][]> => {
@@ -64,12 +73,9 @@ export async function extractMemories(
   projectPath?: string
 ): Promise<MemoryEntry[]> {
   const project = projectPath ?? process.cwd();
-  console.error(
-    `extractMemories: Starting extraction for session ${sessionId} in ${project}`
-  );
+  const storage = getStorage();
 
-  // Initialize storage
-  const storage = new SQLiteStorage();
+  // Initialize database
   await storage.initDatabase(project);
 
   // Create dependencies with mocks
@@ -83,14 +89,16 @@ export async function extractMemories(
     excludedTurnIds: [],
   };
 
-  console.error("extractMemories: Running core extraction algorithm...");
-  const extractedMemories = await coreExtractMemories(options, dependencies);
-
-  console.error(
-    `extractMemories: Core algorithm extracted ${extractedMemories.length} candidates`
-  );
+  let extractedMemories: MemoryEntry[];
+  try {
+    extractedMemories = await coreExtractMemories(options, dependencies);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    throw new Error(`Failed to extract memories: ${message}`);
+  }
 
   // Process each extracted memory: decide Add or Merge, then save
+  // Note: Currently only handles the first action per memory
   const savedMemories: MemoryEntry[] = [];
 
   // Dependencies for update decisions (same for all memories)
@@ -117,7 +125,7 @@ export async function extractMemories(
       updateDependencies
     );
 
-    // Execute the first action (currently we handle one action per memory)
+    // Execute the first action only
     const action = actions[0];
     if (!action) {
       continue;
@@ -126,21 +134,11 @@ export async function extractMemories(
     if (action.action === "Add") {
       await storage.saveMemory(memory);
       savedMemories.push(memory);
-      console.error(
-        `extractMemories: Added new memory ${memory.id}: ${memory.topicSummary}`
-      );
     } else {
       // Merge action
       await storage.mergeMemory(project, action.memoryId, action.mergedSummary);
-      console.error(
-        `extractMemories: Merged into memory ${action.memoryId}: ${action.mergedSummary}`
-      );
     }
   }
-
-  console.error(
-    `extractMemories: Completed. Saved ${savedMemories.length} new memories`
-  );
 
   return savedMemories;
 }
