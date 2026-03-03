@@ -122,7 +122,11 @@ function callClaudeCli(prompt: string): Promise<string> {
 
     const timeout = setTimeout(() => {
       process.kill();
-      reject(new Error("Claude CLI call timed out after 30 seconds"));
+      reject(
+        new Error(
+          `Claude CLI call timed out after ${DEFAULT_TIMEOUT_MS / 1000} seconds`
+        )
+      );
     }, DEFAULT_TIMEOUT_MS);
 
     process.on("close", (code) => {
@@ -151,7 +155,7 @@ function callClaudeCli(prompt: string): Promise<string> {
 /**
  * Parse Claude CLI response, handling various formats
  */
-function parseClaudeResponse(response: string): {
+export function parseClaudeResponse(response: string): {
   memories: Array<{ summary: string; reference: number[] }>;
 } {
   // Try to find and extract JSON from the response

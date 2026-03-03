@@ -4,17 +4,15 @@
  * Verifies: parses valid JSON response, handles malformed JSON, includes excluded turn IDs
  */
 import { describe, expect, it } from "bun:test";
-
-/** Regex to extract JSON from code fences */
-const CODE_FENCE_JSON_REGEX = /```(?:json)?\s*([\s\S]*?)\s*```/i;
+import { parseClaudeResponse } from "../claude-cli.ts";
 
 describe("Claude CLI Adapter", () => {
-  describe("JSON parsing", () => {
+  describe("parseClaudeResponse", () => {
     it("should parse valid JSON response", () => {
       const response =
         '{"memories": [{"summary": "Test memory", "reference": [1, 2]}]}';
 
-      const parsed = JSON.parse(response);
+      const parsed = parseClaudeResponse(response);
 
       expect(parsed.memories).toHaveLength(1);
       expect(parsed.memories[0].summary).toBe("Test memory");
@@ -24,7 +22,7 @@ describe("Claude CLI Adapter", () => {
     it("should handle empty memories array", () => {
       const response = '{"memories": []}';
 
-      const parsed = JSON.parse(response);
+      const parsed = parseClaudeResponse(response);
 
       expect(parsed.memories).toEqual([]);
     });
@@ -32,94 +30,49 @@ describe("Claude CLI Adapter", () => {
     it("should handle malformed JSON gracefully", () => {
       const response = "not valid json";
 
-      expect(() => JSON.parse(response)).toThrow();
+      expect(() => parseClaudeResponse(response)).toThrow();
     });
 
     it("should handle JSON wrapped in code fences", () => {
       const response =
         '```json\n{"memories": [{"summary": "Test", "reference": [1]}]}\n```';
 
-      const codeFenceMatch = response.match(CODE_FENCE_JSON_REGEX);
-
-      expect(codeFenceMatch).not.toBeNull();
-      if (codeFenceMatch === null) {
-        throw new Error("Expected code fence match");
-      }
-      const jsonStr = codeFenceMatch[1].trim();
-      const parsed = JSON.parse(jsonStr);
+      const parsed = parseClaudeResponse(response);
 
       expect(parsed.memories).toHaveLength(1);
-    });
-  });
-
-  describe("Excluded turn IDs", () => {
-    it("should build exclusion text with single turn ID", () => {
-      const excludedTurnIds = [1];
-      const exclusionText =
-        excludedTurnIds.length > 0
-          ? `\n\nIMPORTANT: Only extract memories from turns NOT already referenced. Skip turns: [${excludedTurnIds.join(", ")}]`
-          : "";
-
-      expect(exclusionText).toContain("Skip turns: [1]");
+      expect(parsed.memories[0].summary).toBe("Test");
     });
 
-    it("should build exclusion text with multiple turn IDs", () => {
-      const excludedTurnIds = [1, 2, 3, 5, 8];
-      const exclusionText =
-        excludedTurnIds.length > 0
-          ? `\n\nIMPORTANT: Only extract memories from turns NOT already referenced. Skip turns: [${excludedTurnIds.join(", ")}]`
-          : "";
+    it("should filter out invalid memory entries missing summary", () => {
+      const response =
+        '{"memories": [{"summary": "Valid", "reference": [1]}, {"reference": [2]}]}';
 
-      expect(exclusionText).toContain("Skip turns: [1, 2, 3, 5, 8]");
+      const parsed = parseClaudeResponse(response);
+
+      // Only first memory is valid (has both summary and reference)
+      expect(parsed.memories).toHaveLength(1);
+      expect(parsed.memories[0].summary).toBe("Valid");
     });
 
-    it("should return empty exclusion text when no turn IDs excluded", () => {
-      const excludedTurnIds: number[] = [];
-      const exclusionText =
-        excludedTurnIds.length > 0
-          ? `\n\nIMPORTANT: Only extract memories from turns NOT already referenced. Skip turns: [${excludedTurnIds.join(", ")}]`
-          : "";
+    it("should filter out invalid memory entries missing reference", () => {
+      const response =
+        '{"memories": [{"summary": "Valid", "reference": [1]}, {"summary": "Also valid"}]}';
 
-      expect(exclusionText).toBe("");
-    });
-  });
+      const parsed = parseClaudeResponse(response);
 
-  describe("Memory validation", () => {
-    it("should validate memory has required fields", () => {
-      const memory = { summary: "Test memory", reference: [1, 2] };
-
-      const isValid =
-        typeof memory === "object" &&
-        memory !== null &&
-        typeof memory.summary === "string" &&
-        Array.isArray(memory.reference) &&
-        memory.reference.every((ref) => typeof ref === "number");
-
-      expect(isValid).toBe(true);
+      // Only first memory is valid (has both summary and reference)
+      expect(parsed.memories).toHaveLength(1);
     });
 
-    it("should reject memory missing summary", () => {
-      const memory = { reference: [1, 2] };
+    it("should accept memories with both summary and reference", () => {
+      const response =
+        '{"memories": [{"summary": "First", "reference": [1]}, {"summary": "Second", "reference": [2, 3]}]}';
 
-      const isValid =
-        typeof memory === "object" &&
-        memory !== null &&
-        typeof memory.summary === "string" &&
-        Array.isArray(memory.reference);
+      const parsed = parseClaudeResponse(response);
 
-      expect(isValid).toBe(false);
-    });
-
-    it("should reject memory with non-array reference", () => {
-      const memory = { summary: "Test", reference: "not array" };
-
-      const isValid =
-        typeof memory === "object" &&
-        memory !== null &&
-        typeof memory.summary === "string" &&
-        Array.isArray(memory.reference);
-
-      expect(isValid).toBe(false);
+      expect(parsed.memories).toHaveLength(2);
+      expect(parsed.memories[0].summary).toBe("First");
+      expect(parsed.memories[1].summary).toBe("Second");
     });
   });
 });

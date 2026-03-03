@@ -4,55 +4,55 @@
  * Verifies: extracts and stores memories
  */
 import { describe, expect, it } from "bun:test";
+import type { HookInput } from "../types.ts";
 
 describe("SessionEnd Hook", () => {
-  describe("Hook input validation", () => {
-    it("should require session_id", () => {
-      const input = {
+  describe("HookInput validation", () => {
+    it("should have correct hook_event_name for SessionEnd", () => {
+      const input: HookInput = {
         cwd: "/test/project",
-        hook_event_name: "SessionEnd" as const,
+        hook_event_name: "SessionEnd",
         session_id: "test-session-123",
         transcript_path: "/home/user/.claude/projects/test-session-123.jsonl",
       };
 
-      expect(input.session_id).toBeDefined();
       expect(input.hook_event_name).toBe("SessionEnd");
     });
 
-    it("should include transcript_path for extraction", () => {
-      const input = {
+    it("should require transcript_path for extraction", () => {
+      const input: HookInput = {
         cwd: "/test/project",
-        hook_event_name: "SessionEnd" as const,
+        hook_event_name: "SessionEnd",
         session_id: "test-session-123",
         transcript_path: "/home/user/.claude/projects/test-session-123.jsonl",
       };
 
       expect(input.transcript_path).toBeDefined();
-    });
-  });
-
-  describe("Hook behavior", () => {
-    it("should exit with code 0 on success", () => {
-      // The hook handler exits with 0 to not block Claude
-      const exitCode = 0;
-
-      expect(exitCode).toBe(0);
+      expect(typeof input.transcript_path).toBe("string");
     });
 
-    it("should exit with code 0 on error to not block Claude", () => {
-      // Even on errors, the hook exits 0 to prevent blocking Claude
-      const exitCode = 0;
+    it("should have valid session_id", () => {
+      const input: HookInput = {
+        cwd: "/test/project",
+        hook_event_name: "SessionEnd",
+        session_id: "test-session-123",
+        transcript_path: "/path/to/transcript.jsonl",
+      };
 
-      expect(exitCode).toBe(0);
+      expect(input.session_id).toBeDefined();
+      expect(input.session_id.length).toBeGreaterThan(0);
     });
-  });
 
-  describe("Expected hook flow", () => {
-    it("should trigger extraction on SessionEnd", () => {
-      // SessionEnd should trigger memory extraction
-      const hookEvent = "SessionEnd";
+    it("should have cwd for project path", () => {
+      const input: HookInput = {
+        cwd: "/test/project",
+        hook_event_name: "SessionEnd",
+        session_id: "test-session-123",
+        transcript_path: "/path/to/transcript.jsonl",
+      };
 
-      expect(hookEvent).toBe("SessionEnd");
+      expect(input.cwd).toBeDefined();
+      expect(input.cwd).toContain("/test/project");
     });
   });
 });

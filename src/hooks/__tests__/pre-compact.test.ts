@@ -4,17 +4,18 @@
  * Verifies: extracts new + re-injects (dual-phase constitutional requirement)
  */
 import { describe, expect, it } from "bun:test";
+import type { HookInput } from "../types.ts";
 import { formatMemories } from "../utils.ts";
 
 describe("PreCompact Hook", () => {
-  describe("Hook input", () => {
+  describe("HookInput validation", () => {
     it("should require transcript_path", () => {
-      const input = {
+      const input: HookInput = {
         cwd: "/test/project",
-        hook_event_name: "PreCompact" as const,
+        hook_event_name: "PreCompact",
         session_id: "test-session-123",
         transcript_path: "/home/user/.claude/projects/test-session-123.jsonl",
-        trigger: "manual" as const,
+        trigger: "manual",
       };
 
       expect(input.transcript_path).toBeDefined();
@@ -22,27 +23,39 @@ describe("PreCompact Hook", () => {
     });
 
     it("should support manual trigger", () => {
-      const input = {
+      const input: HookInput = {
         cwd: "/test/project",
-        hook_event_name: "PreCompact" as const,
+        hook_event_name: "PreCompact",
         session_id: "test-session-123",
         transcript_path: "/home/user/.claude/projects/test-session-123.jsonl",
-        trigger: "manual" as const,
+        trigger: "manual",
       };
 
       expect(input.trigger).toBe("manual");
     });
 
     it("should support auto trigger", () => {
-      const input = {
+      const input: HookInput = {
         cwd: "/test/project",
-        hook_event_name: "PreCompact" as const,
+        hook_event_name: "PreCompact",
         session_id: "test-session-123",
         transcript_path: "/home/user/.claude/projects/test-session-123.jsonl",
-        trigger: "auto" as const,
+        trigger: "auto",
       };
 
       expect(input.trigger).toBe("auto");
+    });
+
+    it("should have session_id for correlation", () => {
+      const input: HookInput = {
+        cwd: "/test/project",
+        hook_event_name: "PreCompact",
+        session_id: "test-session-123",
+        transcript_path: "/path/to/transcript.jsonl",
+        trigger: "manual",
+      };
+
+      expect(input.session_id).toBeDefined();
     });
   });
 
@@ -74,17 +87,7 @@ describe("PreCompact Hook", () => {
       const result = JSON.stringify(output);
 
       expect(result).toContain('"hookEventName":"PreCompact"');
-      // Empty memories should result in empty additionalContext
       expect(result).toContain('"additionalContext":""');
-    });
-
-    it("should support both extraction and re-injection phases", () => {
-      // PreCompact has two phases:
-      // 1. Extract new memories before compaction
-      // 2. Re-inject existing memories after compaction
-      const hasTwoPhases = true;
-
-      expect(hasTwoPhases).toBe(true);
     });
   });
 });
