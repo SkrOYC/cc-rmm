@@ -29,6 +29,17 @@
 }
 ```
 
+### Primary Interaction Model
+
+The primary user-facing interaction model for this plugin is:
+
+1. **Claude Code hooks** for automatic extraction and retrieval
+2. **Plugin-namespaced Claude Code slash commands** for explicit memory operations such as `/rmm:list`, `/rmm:clear`, and `/rmm:search`
+
+A standalone project CLI is **not** the main source of interaction for this system. The Claude CLI is used internally as an implementation detail for structured model calls during extraction and memory-update decisions. The built-in Claude Code `/memory` command remains reserved for Claude Code's own CLAUDE.md and auto-memory management, so this plugin must use its own namespace.
+
+This follows Claude Code's documented plugin model: plugin-provided slash commands are implemented as skills at the plugin root, plugin skills are namespaced as `plugin-name:skill-name`, and `/memory` is a built-in Claude Code command that should remain reserved. See [Skills](https://code.claude.com/docs/en/skills.md), [Plugins](https://code.claude.com/docs/en/plugins.md), [Plugins reference](https://code.claude.com/docs/en/plugins-reference.md), [Interactive mode](https://code.claude.com/docs/en/interactive-mode.md), and [Memory](https://code.claude.com/docs/en/memory.md).
+
 ---
 
 ## 2. Architecture Decision Records (ADRs)
@@ -59,6 +70,7 @@
 - ✅ Uses Claude Code's own LLM
 - ✅ Structured JSON output via schema
 - ✅ No additional API keys needed
+- ✅ Remains an internal implementation detail rather than the main user-facing interface
 - ⚠️ Depends on Claude Code being installed
 - ⚠️ Extraction takes longer than direct API call
 
@@ -154,7 +166,11 @@ CREATE INDEX idx_citations_session ON citations(session_id);
 
 ---
 
-## 4. Hook Contract (CLI Interface)
+## 4. Hook Contract (Hook I/O Interface)
+
+> **Interaction model note:** Hooks and slash commands are the primary user-facing interfaces for this plugin. Any Claude CLI usage described below is internal to the implementation and is not intended to be the main user workflow.
+>
+> **Claude Code contract note:** Claude Code documents `UserPromptSubmit` and `SessionStart` as the hook events whose stdout can be added to Claude's context. `PreCompact`, `SessionEnd`, and `SessionStart` are command-only hook events, and `PreCompact` / `SessionEnd` have no decision control. This spec therefore uses `SessionStart` with `source: "compact"` for post-compaction reinjection instead of relying on `PreCompact` stdout. See [Hooks reference](https://code.claude.com/docs/en/hooks.md) and [Hooks guide](https://code.claude.com/docs/en/hooks-guide.md).
 
 ### UserPromptSubmit Hook (Memory Loading)
 
@@ -181,6 +197,45 @@ CREATE INDEX idx_citations_session ON citations(session_id);
 ```
 
 > **Note:** This hook fires on every user prompt, ensuring fresh memories are injected before each interaction.
+>
+> Claude Code documents `UserPromptSubmit` as one of the events whose stdout can be added to Claude's context. See [Hooks reference](https://code.claude.com/docs/en/hooks.md).
+
+### SessionStart Hook (Compaction Recovery)
+
+**Input (stdin):**
+
+```json
+{
+	"session_id": "abc123",
+	"transcript_path": "/home/user/.claude/projects/abc123.jsonl",
+	"cwd": "/home/user/my-project",
+	"permission_mode": "default",
+	"hook_event_name": "SessionStart",
+	"source": "compact",
+	"model": "claude-sonnet-4-6"
+}
+```
+
+**Actions:**
+
+1. Check `source`
+2. If `source !== "compact"`, exit 0 without injecting memory context
+3. If `source === "compact"`, load project-scoped memories for `cwd`
+4. Retrieve and rerank relevant memories for the resumed session state
+5. Return `additionalContext` using the same `<memories>` format as `UserPromptSubmit`
+
+**Output (stdout):**
+
+```json
+{
+	"hookSpecificOutput": {
+		"hookEventName": "SessionStart",
+		"additionalContext": "<memories>\n- Memory [0]: User prefers TypeScript strict mode\n  Original: \"I always use TypeScript with strict: true\"\n</memories>"
+	}
+}
+```
+
+> **Note:** Claude Code documents `SessionStart` with matcher/source `compact` as the supported mechanism for re-injecting critical context after compaction. See [Hooks reference](https://code.claude.com/docs/en/hooks.md) and [Hooks guide](https://code.claude.com/docs/en/hooks-guide.md).
 
 ### SessionEnd Hook (Memory Extraction)
 
@@ -192,7 +247,7 @@ CREATE INDEX idx_citations_session ON citations(session_id);
 	"cwd": "/home/user/my-project",
 	"hook_event_name": "SessionEnd",
 	"transcript_path": "/home/user/.claude/projects/abc123.jsonl",
-	"last_assistant_message": "I've completed the refactoring"
+	"reason": "other"
 }
 ```
 
@@ -236,6 +291,10 @@ PROMPT
   }'
 ```
 
+**Output:** None. Exit 0 after extraction and persistence side effects complete.
+
+> **Note:** `SessionEnd` is a command-only side-effect hook with no decision control, so this handler does not rely on stdout context injection. See [Hooks reference](https://code.claude.com/docs/en/hooks.md).
+
 ### PreCompact Hook
 
 **Input (stdin):**
@@ -243,10 +302,12 @@ PROMPT
 ```json
 {
 	"session_id": "abc123",
-	"cwd": "/home/user/my-project",
-	"hook_event_name": "PreCompact",
 	"transcript_path": "/home/user/.claude/projects/abc123.jsonl",
-	"last_assistant_message": "..."
+	"cwd": "/home/user/my-project",
+	"permission_mode": "default",
+	"hook_event_name": "PreCompact",
+	"trigger": "manual",
+	"custom_instructions": ""
 }
 ```
 
@@ -257,11 +318,13 @@ PROMPT
 1. **Full re-extraction** (Prospective Reflection): Read full transcript, call Claude CLI to extract memories from all turns
 2. **Deduplicate**: Skip turns already referenced in existing memories (via turn reference tracking)
 3. **Store new memories**: Persist to SQLite with turn references
-4. **Re-inject**: Return memories via additionalContext for post-compaction recovery
+4. **Exit cleanly**: Allow Claude Code to continue compaction; any post-compaction reinjection happens in `SessionStart` with `source: "compact"`
 
 > **Constitutional Note:** PreCompact performs full re-extraction per constitution. Deduplication via turn reference tracking prevents duplicates with memories already extracted at SessionEnd.
 
-**Output:** Same format as UserPromptSubmit, injects memories after compaction.
+**Output:** None. Exit 0 after persistence side effects complete.
+
+> **Note:** Claude Code documents `PreCompact` as a command-only pre-compaction hook and recommends `SessionStart` with matcher `compact` for context reinjection after compaction. See [Hooks reference](https://code.claude.com/docs/en/hooks.md) and [Hooks guide](https://code.claude.com/docs/en/hooks-guide.md).
 
 ---
 
@@ -276,8 +339,16 @@ cc-rmm/
 ├── hooks/
 │   ├── hooks.json										# Hook configurations
 │   ├── user-prompt-submit.ts					# Memory loading
+│   ├── session-start.ts								# Post-compaction reinjection
 │   ├── session-end.ts									# Memory extraction
-│   └── pre-compact.ts								# Memory re-injection
+│   └── pre-compact.ts								# Pre-compaction extraction
+├── skills/
+│   ├── list/
+│   │   └── SKILL.md									# /rmm:list
+│   ├── clear/
+│   │   └── SKILL.md									# /rmm:clear
+│   └── search/
+│       └── SKILL.md									# /rmm:search
 ├── src/
 │   ├── core/													# HARVESTED (adapted from rmm-middleware)
 │   │   ├── algorithms/
@@ -291,13 +362,15 @@ cc-rmm/
 │   │   └── types/
 │   │       └── memory.ts							# Domain types (768-dim)
 │   ├── adapters/
-│   │   └── claude-cli.ts							# Claude CLI wrapper
+│   │   └── claude-cli.ts							# Internal Claude CLI wrapper for model calls
 │   ├── storage/
 │   │   ├── sqlite.ts									# Database operations
 │   │   └── migrations.ts							# Schema migrations
 │   ├── embeddings/
 │   │   └── nomic.ts									# nomic-embed-text-v1 service
-│   └── cli.ts												# Entry point router
+│   ├── commands/
+│   │   └── rmm.ts									# Internal helpers used by /rmm:* plugin skills
+│   └── index.ts											# Internal entry point/router
 ├── scripts/
 │   ├── install-model.ts							# Embedding model download
 │   └── init-db.ts										# Database initialization
@@ -307,6 +380,8 @@ cc-rmm/
 ├── tsconfig.json
 └── biome.jsonc
 ```
+
+> **Plugin structure note:** Claude Code plugins keep `plugin.json` inside `.claude-plugin/`, while `hooks/` and `skills/` live at the plugin root. See [Plugins](https://code.claude.com/docs/en/plugins.md) and [Plugins reference](https://code.claude.com/docs/en/plugins-reference.md).
 
 ### Key Algorithm Adaptations (from rmm-middleware)
 
@@ -333,7 +408,7 @@ This ensures PreCompact extraction adds new memories without duplicating content
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                    Hook Scripts (CLI)                        │
+│                 Hook Scripts (Hook Process)                  │
 │              (user-prompt-submit, session-end, pre-compact)              │
 └──────────────────────────────────────────────────────────────┘
                               │
@@ -447,11 +522,11 @@ interface IStorage {
 - [ ] Copy matrix.ts (should work as-is)
 - [ ] Copy and adapt prompts
 
-### Phase 4: Claude CLI Integration (Week 3)
+### Phase 4: Internal Claude CLI Integration (Week 3)
 
 - [ ] Implement Claude CLI wrapper
 - [ ] Test memory extraction via `claude -p`
-- [ ] Connect hooks to extraction pipeline
+- [ ] Connect hooks to extraction and compaction-recovery pipeline
 
 ### Phase 5: Retrieval & Learning (Week 3-4)
 
@@ -463,7 +538,7 @@ interface IStorage {
 ### Phase 6: Polish (Week 4)
 
 - [ ] Error handling and logging
-- [ ] CLI commands (/memory list, etc.)
+- [ ] Plugin skills providing `/rmm:*` slash commands
 - [ ] Documentation
 
 ---
@@ -476,8 +551,21 @@ interface IStorage {
 | **nomic-embed-text-v1**       | Highest quality local embedding model                      |
 | **SQLite**                    | ACID compliance, Bun native support, per-project isolation |
 | **Claude CLI for extraction** | No API keys needed, uses existing Claude Code              |
+| **Primary interaction**       | Hooks + plugin skills providing `/rmm:*`, not a standalone project CLI |
 | **Copy-and-adapt code**       | Clean separation, dimension-specific optimizations         |
 | **Per-project isolation**     | Git directory as natural boundary                          |
+
+---
+
+## 9. External Claude Code References
+
+- [Hooks reference](https://code.claude.com/docs/en/hooks.md)
+- [Hooks guide](https://code.claude.com/docs/en/hooks-guide.md)
+- [Skills](https://code.claude.com/docs/en/skills.md)
+- [Plugins](https://code.claude.com/docs/en/plugins.md)
+- [Plugins reference](https://code.claude.com/docs/en/plugins-reference.md)
+- [Interactive mode](https://code.claude.com/docs/en/interactive-mode.md)
+- [Memory](https://code.claude.com/docs/en/memory.md)
 
 ---
 

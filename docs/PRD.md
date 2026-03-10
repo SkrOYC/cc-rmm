@@ -83,14 +83,18 @@ This breaks the "personalized assistant" promise for users working on long-term 
 | **Memory Storage**             | Persist memories to local database                      | Memories survive Claude Code restart                                            |
 | **Memory Loading**             | Before each user prompt, load relevant memories into context   | Memories are injected via UserPromptSubmit hook for fresh context on every prompt                              |
 
+> **Lifecycle note:** Claude Code exposes the lifecycle needed by this product through `SessionStart`, `UserPromptSubmit`, `PreCompact`, and `SessionEnd`. See [Hooks reference](https://code.claude.com/docs/en/hooks.md) and [Hooks guide](https://code.claude.com/docs/en/hooks-guide.md).
+
 ### Epic 2: Context Injection (P0)
 
 | Capability                | Description                                            | Acceptance Criteria                             |
 | ------------------------- | ------------------------------------------------------ | ----------------------------------------------- |
 | **Pre-Compact Extraction** | Before context compaction, extract new memories       | Prevents memory loss during compaction          |
-| **Pre-Compact Injection** | Before context compaction, inject memory context       | Memory survives long conversations              |
+| **Post-Compact Reinjection** | After compaction, re-inject memory context          | Memory survives long conversations              |
 | **Semantic Retrieval**    | Retrieve memories semantically similar to current task | Uses embedding similarity search                |
 | **Format Injection**      | Format memories per paper's Appendix D.2               | Memories appear as `<memories>` block in prompt |
+
+> **Implementation note:** Claude Code currently documents `UserPromptSubmit` and `SessionStart` as context-injection surfaces, and recommends `SessionStart` with matcher `compact` to re-inject context after compaction. `PreCompact` is documented as a pre-compaction side-effect hook. See [Hooks reference](https://code.claude.com/docs/en/hooks.md) and [Hooks guide](https://code.claude.com/docs/en/hooks-guide.md).
 
 ### Epic 3: Adaptive Retrieval (P1)
 
@@ -113,8 +117,10 @@ This breaks the "personalized assistant" promise for users working on long-term 
 | Capability            | Description                                     | Acceptance Criteria            |
 | --------------------- | ----------------------------------------------- | ------------------------------ |
 | **Memory Inspection** | User can query "what do you remember about X?"  | Returns formatted memory list  |
-| **Memory Commands**   | CLI commands for memory operations              | Available for memory ops       |
+| **Memory Commands**   | Plugin-namespaced, skill-backed slash commands for memory operations | Available for memory ops       |
 | **Opt-Out**           | User can disable memory per-session or globally | No memory stored when disabled |
+
+> **Slash-command note:** Claude Code plugin slash commands are implemented as skills under `skills/`, and plugin skills are namespaced as `plugin-name:skill-name`. See [Skills](https://code.claude.com/docs/en/skills.md), [Plugins](https://code.claude.com/docs/en/plugins.md), and [Plugins reference](https://code.claude.com/docs/en/plugins-reference.md).
 
 ---
 
@@ -150,7 +156,7 @@ This breaks the "personalized assistant" promise for users working on long-term 
 | **Memory encryption**       | Add later if needed; local is low-risk |
 | **Team memory**             | Secondary to individual memory         |
 | **Complex merge conflicts** | Simple overwrite for MVP               |
-| **Memory visualization UI** | CLI commands only for MVP              |
+| **Memory visualization UI** | Slash-command workflow only for MVP    |
 
 ---
 
@@ -175,8 +181,8 @@ C4Context
   SystemDb(storage, "Local Database", "Memory bank storage")
   System(embeddings, "Embedding Model", "Local embeddings")
 
-  Rel(user, cli, "Invokes", "CLI commands")
-  Rel(cli, hooks, "Triggers", "UserPromptSubmit, SessionEnd, PreCompact")
+  Rel(user, cli, "Invokes", "Prompts + /rmm:* skills")
+  Rel(cli, hooks, "Triggers", "SessionStart, UserPromptSubmit, SessionEnd, PreCompact")
   Rel(hooks, hooks_handler, "Executes", "Shell scripts")
   Rel(hooks_handler, memory_engine, "Calls", "Memory operations")
   Rel(memory_engine, storage, "Reads/Writes", "Memories")
@@ -184,6 +190,8 @@ C4Context
   Rel(memory_engine, reranker, "Uses", "Learned weights")
   Rel(reranker, storage, "Persists", "W_q, W_m")
 ```
+
+> **Diagram note:** The `/rmm:*` interaction path in this diagram refers to plugin skills, not a standalone project CLI. See [Skills](https://code.claude.com/docs/en/skills.md), [Plugins](https://code.claude.com/docs/en/plugins.md), and [Plugins reference](https://code.claude.com/docs/en/plugins-reference.md).
 
 ### Domain Model
 
@@ -265,6 +273,18 @@ This PRD implements the RMM framework from:
   - Prospective Reflection (topic-based memory organization)
   - Retrospective Reflection (RL-based retrieval refinement)
   - 10%+ accuracy improvement over baselines
+
+---
+
+## 8. External Claude Code References
+
+- [Hooks reference](https://code.claude.com/docs/en/hooks.md)
+- [Hooks guide](https://code.claude.com/docs/en/hooks-guide.md)
+- [Skills](https://code.claude.com/docs/en/skills.md)
+- [Plugins](https://code.claude.com/docs/en/plugins.md)
+- [Plugins reference](https://code.claude.com/docs/en/plugins-reference.md)
+- [Interactive mode](https://code.claude.com/docs/en/interactive-mode.md)
+- [Memory](https://code.claude.com/docs/en/memory.md)
 
 ---
 
